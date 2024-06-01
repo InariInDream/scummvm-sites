@@ -1,6 +1,8 @@
 import hashlib
 import time
 from db_functions import db_connect, insert_fileset, insert_file, insert_filechecksum, find_matching_game, merge_filesets, create_log, get_current_user
+import getpass
+import pymysql
 
 def user_calc_key(user_fileset):
     key_string = ""
@@ -25,10 +27,11 @@ def file_json_to_array(file_json_object):
     return res
 
 def user_insert_queue(user_fileset, conn):
-    query = "INSERT INTO queue (time, notes, fileset, ticketid, userid, commit) VALUES (%s, NULL, @fileset_last, NULL, NULL, NULL)"
+    query = f"INSERT INTO queue (time, notes, fileset, ticketid, userid, commit) VALUES ({int(time.time())}, NULL, @fileset_last, NULL, NULL, NULL)"
+
     with conn.cursor() as cursor:
-        cursor.execute(query, (int(time.time()),))
-    conn.commit()
+        cursor.execute(query)
+        conn.commit()
 
 def user_insert_fileset(user_fileset, ip, conn):
     src = 'user'
@@ -52,7 +55,61 @@ def user_insert_fileset(user_fileset, ip, conn):
     conn.commit()
     return fileset_id
 
-def match_and_merge_user_filesets(id, conn):
+def match_and_merge_user_filesets(id):
+    conn = db_connect()
+
+    # Getting unmatched filesets
+    unmatched_filesets = []
+
+    with conn.cursor() as cursor:
+        cursor.execute(f"SELECT fileset.id, filechecksum.checksum, src, status FROM fileset JOIN file ON file.fileset = fileset.id JOIN filechecksum ON file.id = filechecksum.file WHERE status = 'user' AND fileset.id = {id}")
+        unmatched_files = cursor.fetchall()
+
+    # Splitting them into different filesets
+    i = 0
+    while i < len(unmatched_files):
+        cur_fileset = unmatched_files[i][0]
+        temp = []
+        while i < len(unmatched_files) and cur_fileset == unmatched_files[i][0]:
+            temp.append(unmatched_files[i])
+            i += 1
+        unmatched_filesets.append(temp)
+
+    for fileset in unmatched_filesets:
+        matching_games = find_matching_game(fileset)
+
+        if len(matching_games) != 1: # If there is no match/non-unique match
+            continue
+
+        matched_game = matching_games[0]
+
+        status = 'fullmatch'
+
+        # Convert NULL values to string with value NULL for printing
+        matched_game = {k: 'NULL' if v is None else v for k, v in matched_game.items()}
+
+        category_text = f"Matched from {fileset[0][2]}"
+        log_text = f"Matched game {matched_game['engineid']}:\n{matched_game['gameid']}-{matched_game['platform']}-{matched_game['language']}\nvariant {matched_game['key']}. State {status}. Fileset:{fileset[0][0]}."
+
+        # Updating the fileset.game value to be $matched_game["id"]
+        query = f"UPDATE fileset SET game = {matched_game['id']}, status = '{status}', `key` = '{matched_game['key']}' WHERE id = {fileset[0][0]}"
+
+        history_last = merge_filesets(matched_game["fileset"], fileset[0][0])
+
+        if cursor.execute(query):
+            user = f'cli:{getpass.getuser()}'
+
+            # Merge log
+            create_log("Fileset merge", user, pymysql.escape_string(conn, f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0][0]}"))
+
+            # Matching log
+            log_last = create_log(pymysql.escape_string(conn, category_text), user, pymysql.escape_string(conn, log_text))
+
+            # Add log id to the history table
+            cursor.execute(f"UPDATE history SET log = {log_last} WHERE id = {history_last}")
+
+        if not conn.commit():
+            print("Updating matched games failed")
     with conn.cursor() as cursor:
         cursor.execute("""
             SELECT fileset.id, filechecksum.checksum, src, status
@@ -98,31 +155,3 @@ def match_and_merge_user_filesets(id, conn):
             log_last = create_log(category_text, user, log_text)
             cursor.execute("UPDATE history SET log = %s WHERE id = %s", (log_last, history_last))
         conn.commit()
-
-def insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, ip):
-    
-    pass
-
-def insert_file(file, detection, src, conn):
-    
-    pass
-
-def insert_filechecksum(file, key, conn):
-    
-    pass
-
-def find_matching_game(fileset):
-    
-    pass
-
-def merge_filesets(fileset1, fileset2):
-    
-    pass
-
-def create_log(category, user, text):
-    
-    pass
-
-def get_current_user():
-    
-    pass
