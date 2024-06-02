@@ -1,6 +1,6 @@
 import hashlib
 import time
-from db_functions import db_connect, insert_fileset, insert_file, insert_filechecksum, find_matching_game, merge_filesets, create_log, get_current_user
+from db_functions import db_connect, insert_fileset, insert_file, insert_filechecksum, find_matching_game, merge_filesets, create_log
 import getpass
 import pymysql
 
@@ -150,7 +150,7 @@ def match_and_merge_user_filesets(id):
         history_last = merge_filesets(matched_game["fileset"], fileset[0]['id'])
         with conn.cursor() as cursor:
             cursor.execute(query, (matched_game["id"], status, matched_game["key"], fileset[0]['id']))
-            user = 'cli:' + get_current_user()
+            user = 'cli:' + getpass.getuser()
             create_log("Fileset merge", user, f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0]['id']}")
             log_last = create_log(category_text, user, log_text)
             cursor.execute("UPDATE history SET log = %s WHERE id = %s", (log_last, history_last))
