@@ -161,13 +161,18 @@ def fileset():
             html += "<th>Category</th>\n"
             html += "<th>Description</th>\n"
             html += "<th>Log ID</th>\n"
-            for log in logs:
-                html += "<tr>\n"
-                html += f"<td>{log['timestamp']}</td>\n"
-                html += f"<td>{log['category']}</td>\n"
-                html += f"<td>{log['text']}</td>\n"
-                html += f"<td><a href='logs.php?id={log['id']}'>{log['id']}</a></td>\n"
-                html += "</tr>\n"
+            cursor.execute(f"SELECT * FROM history")
+            history = cursor.fetchall()
+            for history_row in history:
+                cursor.execute(f"SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:{history_row['oldfileset']}%' AND `category` NOT LIKE 'merge%' ORDER BY `timestamp` DESC, id DESC")
+                logs = cursor.fetchall()
+                for log in logs:
+                    html += "<tr>\n"
+                    html += f"<td>{log['timestamp']}</td>\n"
+                    html += f"<td>{log['category']}</td>\n"
+                    html += f"<td>{log['text']}</td>\n"
+                    html += f"<td><a href='logs.php?id={log['id']}'>{log['id']}</a></td>\n"
+                    html += "</tr>\n"
             html += "</table>\n"
             return render_template_string(html)
     finally:
