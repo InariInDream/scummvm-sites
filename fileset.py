@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, url_for, render_template_string
+from flask import Flask, request, render_template, redirect, url_for, render_template_string, jsonify
 import pymysql.cursors
 import json
 import re
@@ -177,6 +177,46 @@ def fileset():
             return render_template_string(html)
     finally:
         connection.close()
+
+@app.route('validate', methods=['POST'])
+def validate():
+
+    error_codes = {
+        "unknown": -1,
+        "success": 0,
+        "empty": 2,
+        "no_metadata": 3,
+    }
+
+    json_object = request.get_json()
+
+    ip = request.remote_addr
+    ip = '.'.join(ip.split('.')[:3]) + '.X'
+
+    game_metadata = {k: v for k, v in json_object.items() if k != 'files'}
+
+    json_response = {
+        'error': error_codes['success'],
+        'files': []
+    }
+
+    if not game_metadata:
+        if not json_object.get('files'):
+            json_response['error'] = error_codes['empty']
+            del json_response['files']
+            json_response['status'] = 'empty_fileset'
+            return jsonify(json_response)
+
+        json_response['error'] = error_codes['no_metadata']
+        del json_response['files']
+        json_response['status'] = 'no_metadata'
+
+        fileset_id = user_insert_fileset(json_object['files'], ip, conn)
+        json_response['fileset'] = fileset_id
+        # TODO: handle database operations
+
+        return jsonify(json_response)
+    
 
 if __name__ == '__main__':
     app.run()
