@@ -64,7 +64,17 @@ def fileset():
             history = cursor.fetchall()
 
             # Display fileset details
-            html = f"<h2><u>Fileset: {id}</u></h2>"
+            html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
+        </head>
+        <body>
+        <h2><u>Fileset: {id}</u></h2>
+        <h3>Fileset details</h3>
+        <table>
+        """
 
             cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
             result = cursor.fetchone()
@@ -178,7 +188,7 @@ def fileset():
     finally:
         connection.close()
 
-@app.route('validate', methods=['POST'])
+@app.route('/validate', methods=['POST'])
 def validate():
 
     error_codes = {
