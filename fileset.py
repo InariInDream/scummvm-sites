@@ -4,6 +4,7 @@ import json
 import re
 import os
 from user_fileset_functions import user_calc_key, file_json_to_array, user_insert_queue, user_insert_fileset, match_and_merge_user_filesets
+from pagination import create_page
 
 app = Flask(__name__)
 
@@ -227,6 +228,61 @@ def validate():
 
         return jsonify(json_response)
     
+@app.route('/user_games_list')
+def user_games_list():
+    filename = "user_games_list.php"
+    records_table = "fileset"
+    select_query = """
+    SELECT engineid, gameid, extra, platform, language, game.name,
+    status, fileset.id as fileset
+    FROM fileset
+    LEFT JOIN game ON game.id = fileset.game
+    LEFT JOIN engine ON engine.id = game.engine
+    WHERE status = 'user'
+    """
+    order = "ORDER BY gameid"
+    filters = {
+        "engineid": "engine",
+        "gameid": "game",
+        "extra": "game",
+        "platform": "game",
+        "language": "game",
+        "name": "game",
+        "status": "fileset"
+    }
+    mapping = {
+        'engine.id': 'game.engine',
+        'game.id': 'fileset.game',
+    }
+    return render_template_string(create_page(filename, 200, records_table, select_query, order, filters, mapping))
+
+
+@app.route('/games_list')
+def games_list():
+    filename = "games_list"
+    records_table = "game"
+    select_query = """
+    SELECT engineid, gameid, extra, platform, language, game.name,
+    status, fileset.id as fileset
+    FROM game
+    JOIN engine ON engine.id = game.engine
+    JOIN fileset ON game.id = fileset.game
+    """
+    order = "ORDER BY gameid"
+    filters = {
+        "engineid": "engine",
+        "gameid": "game",
+        "extra": "game",
+        "platform": "game",
+        "language": "game",
+        "name": "game",
+        'status': 'fileset'
+    }
+    mapping = {
+        'engine.id': 'game.engine',
+        'game.id': 'fileset.game',
+    }
+    return render_template_string(create_page(filename, 25, records_table, select_query, order, filters, mapping))
 
 if __name__ == '__main__':
     app.run()

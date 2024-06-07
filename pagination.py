@@ -1,33 +1,14 @@
-from urllib.parse import urlencode
+from flask import Flask, request, render_template_string
 import pymysql
 import json
-from flask import Flask, request, render_template_string
-import os
 import re
-from math import ceil
-import html
+import os
+
+app = Flask(__name__)
 
 stylesheet = 'style.css'
 jquery_file = 'https://code.jquery.com/jquery-3.7.0.min.js'
 js_file = 'js_functions.js'
-print(f"<link rel='stylesheet' href='{stylesheet}'>\n")
-print(f"<script type='text/javascript' src='{jquery_file}'></script>\n")
-print(f"<script type='text/javascript' src='{js_file}'></script>\n")
-
-
-with open('mysql_config.json') as f:
-    mysql_cred = json.load(f)
-
-conn = pymysql.connect(
-    host=mysql_cred["servername"],
-    user=mysql_cred["username"],
-    password=mysql_cred["password"],
-    db=mysql_cred["dbname"],
-    charset='utf8mb4',
-    cursorclass=pymysql.cursors.DictCursor,
-    autocommit=False
-)
-
 
 def get_join_columns(table1, table2, mapping):
     for primary, foreign in mapping.items():
@@ -35,204 +16,174 @@ def get_join_columns(table1, table2, mapping):
         foreign = foreign.split('.')
         if (primary[0] == table1 and foreign[0] == table2) or (primary[0] == table2 and foreign[0] == table1):
             return f"{primary[0]}.{primary[1]} = {foreign[0]}.{foreign[1]}"
-    raise ValueError("No primary-foreign key mapping provided. Filter is invalid")
+    return "No primary-foreign key mapping provided. Filter is invalid"
 
-def create_page(filename, results_per_page, records_table, select_query, order, filters = {}, mapping = {}):
-    with open(os.path.join(os.path.dirname(__file__), '../mysql_config.json')) as f:
+def create_page(filename, results_per_page, records_table, select_query, order, filters={}, mapping={}):
+    with open(os.path.join(os.path.dirname(__file__), 'mysql_config.json')) as f:
         mysql_cred = json.load(f)
-
+    
     conn = pymysql.connect(
         host=mysql_cred["servername"],
         user=mysql_cred["username"],
         password=mysql_cred["password"],
         db=mysql_cred["dbname"],
         charset='utf8mb4',
-        cursorclass=pymysql.cursors.DictCursor,
-        autocommit=False
+        cursorclass=pymysql.cursors.DictCursor
     )
 
-    # Check connection
-    if not conn.open:
-        print("Connect failed.")
-        return
-
-    # If there exist get variables that are for filtering
-    get = {k: v for k, v in request.args.items() if v != ''}
-    if 'sort' in get:
-        column = get['sort'].split('-')
-        order = "ORDER BY {}".format(column[0])
-
-        if 'desc' in get['sort']:
-            order += " DESC"
-
-    if set(get.keys()) - set(['page', 'sort']):
-        condition = "WHERE "
-        tables = []
-        for key, value in get.items():
-            if key in ['page', 'sort'] or value == '':
-                continue
-
-            tables.append(filters[key])
-            condition += " AND {}.{} REGEXP '{}'".format(filters[key], key, value) if condition != "WHERE " else "{}.{} REGEXP '{}'".format(filters[key], key, value)
-        if condition == "WHERE ":
-            condition = ""
-
-        # If more than one table is to be searched
-        from_query = records_table
-        if len(tables) > 1 or tables[0] != records_table:
-            for i in range(len(tables)):
-                if tables[i] == records_table:
+    with conn.cursor() as cursor:
+        # Handle sorting
+        sort = request.args.get('sort')
+        if sort:
+            column = sort.split('-')
+            order = f"ORDER BY {column[0]}"
+            if 'desc' in sort:
+                order += " DESC"
+        
+        if set(request.args.keys()).difference({'page', 'sort'}):
+            condition = "WHERE "
+            tables = []
+            for key, value in request.args.items():
+                if key in ['page', 'sort'] or value == '':
                     continue
+                tables.append(filters[key])
+                if value == '':
+                    value = '.*'
+                condition += f" AND {filters[key]}.{key} REGEXP '{value}'" if condition != "WHERE " else f"{filters[key]}.{key} REGEXP '{value}'"
 
-                from_query += " JOIN {} ON {}".format(tables[i], get_join_columns(records_table, tables[i], mapping))
+            if condition == "WHERE ":
+                condition = ""
 
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT({}.id) FROM {} {}".format(records_table, from_query, condition))
-        num_of_results = cursor.fetchone()[0]
-    # If $records_table has a JOIN (multiple tables)
-    elif re.search("JOIN", records_table):
-        first_table = records_table.split(" ")[0]
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT({}.id) FROM {}".format(first_table, records_table))
-        num_of_results = cursor.fetchone()[0]
-    else:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(id) FROM {}".format(records_table))
-        num_of_results = cursor.fetchone()[0]
-    num_of_pages = ceil(num_of_results / results_per_page)
-    if num_of_results == 0:
-        print("No results for given filters")
-        return
-
-    if 'page' not in get:
-        page = 1
-    else:
-        page = max(1, min(int(get['page']), num_of_pages))
-
-    offset = (page - 1) * results_per_page
-
-    # If there exist get variables that are for filtering
-    if set(get.keys()) - set(['page']):
-        condition = "WHERE "
-        for key, value in get.items():
-            value = conn.converter.escape(value)
-            if key not in filters:
-                continue
-
-            condition += "AND {}.{} REGEXP '{}'".format(filters[key], key, value) if condition != "WHERE " else "{}.{} REGEXP '{}'".format(filters[key], key, value)
-        if condition == "WHERE ":
-            condition = ""
-
-        query = "{} {} {} LIMIT {} OFFSET {}".format(select_query, condition, order, results_per_page, offset)
-    else:
-        query = "{} {} LIMIT {} OFFSET {}".format(select_query, order, results_per_page, offset)
-    cursor = conn.cursor()
-    cursor.execute(query)
-
-    # Table
-    print("<form id='filters-form' method='GET' onsubmit='remove_empty_inputs()'>")
-    print("<table>")
-
-    counter = offset + 1
-    for row in cursor.fetchall():
-        if counter == offset + 1: # If it is the first run of the loop
-            if len(filters) > 0:
-                print("<tr class=filter><td></td>")
-                for key in row.keys():
-                    if key not in filters:
-                        print("<td class=filter />")
+            # Handle multiple tables
+            from_query = records_table
+            if len(tables) > 1 or (tables and tables[0] != records_table):
+                for table in tables:
+                    if table == records_table:
                         continue
+                    from_query += f" JOIN {table} ON {get_join_columns(records_table, table, mapping)}"
 
-                    # Filter textbox
-                    filter_value = get[key] if key in get else ""
+            cursor.execute(f"SELECT COUNT({records_table}.id) AS count FROM {records_table}")
+            num_of_results = cursor.fetchone()['count']
+            
+        elif "JOIN" in records_table:
+            first_table = records_table.split(" ")[0]
+            cursor.execute(f"SELECT COUNT({first_table}.id) FROM {records_table}")
+            num_of_results = cursor.fetchone()[f'COUNT({first_table}.id)']
+        else:
+            cursor.execute(f"SELECT COUNT(id) FROM {records_table}")
+            num_of_results = cursor.fetchone()['COUNT(id)']
+            
+        num_of_pages = (num_of_results + results_per_page - 1) // results_per_page
 
-                    print("<td class=filter><input type=text class=filter placeholder='{}' name='{}' value='{}'/></td>".format(key, key, filter_value))
-                print("</tr>")
-                print("<tr class=filter><td></td><td class=filter><input type=submit value='Submit'></td></tr>")
+        if num_of_results == 0:
+            return "No results for given filters"
 
-            print("<th/>") # Numbering column
-            for key in row.keys():
-                if key == 'fileset':
+        page = int(request.args.get('page', 1))
+        page = max(1, min(page, num_of_pages))
+        offset = (page - 1) * results_per_page
+
+        # Fetch results
+        if set(request.args.keys()).difference({'page'}):
+            condition = "WHERE "
+            for key, value in request.args.items():
+                if key not in filters:
                     continue
 
-                # Preserve GET variables
-                vars = ""
-                for k, v in get.items():
-                    if k == 'sort' and v == key:
-                        vars += "&{}={}-desc".format(k, v)
-                    elif k != 'sort':
-                        vars += "&{}={}".format(k, v)
+                value = pymysql.converters.escape_string(value)
+                if value == '':
+                    value = '.*'
+                condition += f" AND {filters[key]}.{key} REGEXP '{value}'" if condition != "WHERE " else f"{filters[key]}.{key} REGEXP '{value}'"
 
-                if "&sort={}".format(key) not in vars:
-                    print("<th><a href='{}?{}&sort={}'>{}</th>".format(filename, vars, key, key))
-                else:
-                    print("<th><a href='{}?{}'>{}</th>".format(filename, vars, key))
+            if condition == "WHERE ":
+                condition = ""
 
-        if filename in ['games_list.php', 'user_games_list.php']:
-            print("<tr class=games_list onclick='hyperlink(\"fileset.php?id={}\")'>".format(row['fileset']))
+            query = f"{select_query} {condition} {order} LIMIT {results_per_page} OFFSET {offset}"
         else:
-            print("<tr>")
-        print("<td>{}.</td>".format(counter))
-        for key, value in row.items():
+            query = f"{select_query} {order} LIMIT {results_per_page} OFFSET {offset}"
+        cursor.execute(query)
+        results = cursor.fetchall()
+
+    # Generate HTML
+    html = f"""
+    <!DOCTYPE html>
+        <html>
+        <head>
+            <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
+        </head>
+        <body>
+    <form id='filters-form' method='GET' onsubmit='remove_empty_inputs()'>
+    <table>
+    """
+    if not results:
+        return "No results for given filters"
+    if results:
+        if filters:
+            html += "<tr class='filter'><td></td>"
+            for key in results[0].keys():
+                if key not in filters:
+                    html += "<td class='filter'></td>"
+                    continue
+                filter_value = request.args.get(key, "")
+                html += f"<td class='filter'><input type='text' class='filter' placeholder='{key}' name='{key}' value='{filter_value}'/></td>"
+            html += "</tr><tr class='filter'><td></td><td class='filter'><input type='submit' value='Submit'></td></tr>"
+
+        html += "<th></th>"
+        for key in results[0].keys():
             if key == 'fileset':
                 continue
+            vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'sort'])
+            if f"&sort={key}" not in vars:
+                html += f"<th><a href='{filename}?{vars}&sort={key}'>{key}</a></th>"
+            else:
+                html += f"<th><a href='{filename}?{vars}'>{key}</a></th>"
 
-            # Add links to fileset in logs table
-            matches = re.search("Fileset:(\d+)", value)
-            if matches:
-                value = value[:matches.start()] + "<a href='fileset.php?id={}'>{}</a>".format(matches.group(1), matches.group(0)) + value[matches.end():]
+        counter = offset + 1
+        for row in results:
+            if filename in ['games_list.php', 'user_games_list.php']:
+                html += f"<tr class='games_list' onclick='hyperlink(\"fileset.php?id={row['fileset']}\")'>"
+            else:
+                html += "<tr>"
+            html += f"<td>{counter}.</td>"
+            for key, value in row.items():
+                if key == 'fileset':
+                    continue
+                matches = re.search(r"Fileset:(\d+)", value)
+                if matches:
+                    value = re.sub(r"Fileset:(\d+)", f"<a href='fileset.php?id={matches.group(1)}'>Fileset:{matches.group(1)}</a>", value)
+                html += f"<td>{value}</td>"
+            html += "</tr>"
+            counter += 1
 
-            print("<td>{}</td>".format(value))
-        print("</tr>")
+    html += "</table></form>"
 
-        counter += 1
+    # Pagination
+    vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'page'])
 
-    print("</table>")
-    print("</form>")
-
-    # Preserve GET variables
-    vars = ""
-    for key, value in get.items():
-        if key == 'page':
-            continue
-        vars += "&{}={}".format(key, value)
-
-    # Navigation elements
     if num_of_pages > 1:
-        print("<form method='GET'>")
-
-        # Preserve GET variables on form submit
-        for key, value in get.items():
-            if key == 'page':
-                continue
-
-            key = html.escape(key)
-            value = html.escape(value)
-            if value != "":
-                print("<input type='hidden' name='{}' value='{}'>".format(key, value))
-
-        print("<div class=pagination>")
+        html += "<form method='GET'>"
+        for key, value in request.args.items():
+            if key != 'page':
+                html += f"<input type='hidden' name='{key}' value='{value}'>"
+        html += "<div class='pagination'>"
         if page > 1:
-            print("<a href={}{}>❮❮</a>".format(filename, vars))
-            print("<a href={}page={}{}>❮</a>".format(filename, page - 1, vars))
+            html += f"<a href='{filename}?{vars}'>❮❮</a>"
+            html += f"<a href='{filename}?page={page-1}&{vars}'>❮</a>"
         if page - 2 > 1:
-            print("<div class=more>...</div>")
-
+            html += "<div class='more'>...</div>"
         for i in range(page - 2, page + 3):
-            if i >= 1 and i <= num_of_pages:
+            if 1 <= i <= num_of_pages:
                 if i == page:
-                    print("<a class=active href={}page={}{}>{}</a>".format(filename, i, vars, i))
+                    html += f"<a class='active' href='{filename}?page={i}&{vars}'>{i}</a>"
                 else:
-                    print("<a href={}page={}{}>{}</a>".format(filename, i, vars, i))
-
+                    html += f"<a href='{filename}?page={i}&{vars}'>{i}</a>"
         if page + 2 < num_of_pages:
-            print("<div class=more>...</div>")
+            html += "<div class='more'>...</div>"
         if page < num_of_pages:
-            print("<a href={}page={}{}>❯</a>".format(filename, page + 1, vars))
-            print("<a href={}page={}{}>❯❯</a>".format(filename, num_of_pages, vars))
+            html += f"<a href='{filename}?page={page+1}&{vars}'>❯</a>"
+            html += f"<a href='{filename}?page={num_of_pages}&{vars}'>❯❯</a>"
+        html += "<input type='text' name='page' placeholder='Page No'>"
+        html += "<input type='submit' value='Submit'>"
+        html += "</div></form>"
 
-        print("<input type='text' name='page' placeholder='Page No'>")
-        print("<input type='submit' value='Submit'>")
-        print("</div>")
-
-        print("</form>")
+    return html
+    
