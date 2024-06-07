@@ -182,7 +182,7 @@ def fileset():
                     html += f"<td>{log['timestamp']}</td>\n"
                     html += f"<td>{log['category']}</td>\n"
                     html += f"<td>{log['text']}</td>\n"
-                    html += f"<td><a href='logs.php?id={log['id']}'>{log['id']}</a></td>\n"
+                    html += f"<td><a href='logs?id={log['id']}'>{log['id']}</a></td>\n"
                     html += "</tr>\n"
             html += "</table>\n"
             return render_template_string(html)
@@ -230,7 +230,7 @@ def validate():
     
 @app.route('/user_games_list')
 def user_games_list():
-    filename = "user_games_list.php"
+    filename = "user_games_list"
     records_table = "fileset"
     select_query = """
     SELECT engineid, gameid, extra, platform, language, game.name,
@@ -264,7 +264,7 @@ def games_list():
     select_query = """
     SELECT engineid, gameid, extra, platform, language, game.name,
     status, fileset.id as fileset
-    FROM game
+    FROM fileset
     JOIN engine ON engine.id = game.engine
     JOIN fileset ON game.id = fileset.game
     """

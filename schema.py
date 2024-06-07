@@ -160,59 +160,43 @@ def random_string(length=10):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 def insert_random_data():
-    # Insert data into engine
-    cursor.execute("INSERT INTO engine (name, engineid) VALUES (%s, %s)", (random_string(), random_string()))
-    cursor.execute("INSERT INTO engine (name, engineid) VALUES (%s, %s)", (random_string(), random_string()))
-    
-    # Insert data into game
-    cursor.execute("INSERT INTO game (name, engine, gameid, extra, platform, language) VALUES (%s, %s, %s, %s, %s, %s)", 
-                   (random_string(), 1, random_string(), random_string(), random_string(), random_string()))
-    cursor.execute("INSERT INTO game (name, engine, gameid, extra, platform, language) VALUES (%s, %s, %s, %s, %s, %s)", 
-                   (random_string(), 2, random_string(), random_string(), random_string(), random_string()))
-    
-    # Insert data into fileset
-    cursor.execute("INSERT INTO fileset (game, status, src, `key`, `megakey`, `timestamp`, detection_size) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
-                   (1, random_string(), random_string(), random_string(), random_string(), datetime.now(), random.randint(1, 100)))
-    cursor.execute("INSERT INTO fileset (game, status, src, `key`, `megakey`, `timestamp`, detection_size) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
-                   (2, random_string(), random_string(), random_string(), random_string(), datetime.now(), random.randint(1, 100)))
-    
-    # Insert data into file
-    cursor.execute("INSERT INTO file (name, size, checksum, fileset, detection) VALUES (%s, %s, %s, %s, %s)", 
-                   (random_string(), random.randint(1000, 10000), random_string(), 1, True))
-    cursor.execute("INSERT INTO file (name, size, checksum, fileset, detection) VALUES (%s, %s, %s, %s, %s)", 
-                   (random_string(), random.randint(1000, 10000), random_string(), 2, False))
-    
-    # Insert data into filechecksum
-    cursor.execute("INSERT INTO filechecksum (file, checksize, checktype, checksum) VALUES (%s, %s, %s, %s)", 
-                   (1, random_string(), random_string(), random_string()))
-    cursor.execute("INSERT INTO filechecksum (file, checksize, checktype, checksum) VALUES (%s, %s, %s, %s)", 
-                   (2, random_string(), random_string(), random_string()))
-    
-    # Insert data into queue
-    cursor.execute("INSERT INTO queue (time, notes, fileset, userid, commit) VALUES (%s, %s, %s, %s, %s)", 
-                   (datetime.now(), random_string(), 1, random.randint(1, 100), random_string()))
-    cursor.execute("INSERT INTO queue (time, notes, fileset, userid, commit) VALUES (%s, %s, %s, %s, %s)", 
-                   (datetime.now(), random_string(), 2, random.randint(1, 100), random_string()))
-    
-    # Insert data into log
-    cursor.execute("INSERT INTO log (`timestamp`, category, user, `text`) VALUES (%s, %s, %s, %s)", 
-                   (datetime.now(), random_string(), random_string(), random_string()))
-    cursor.execute("INSERT INTO log (`timestamp`, category, user, `text`) VALUES (%s, %s, %s, %s)", 
-                   (datetime.now(), random_string(), random_string(), random_string()))
-    
-    # Insert data into history
-    cursor.execute("INSERT INTO history (`timestamp`, fileset, oldfileset, log) VALUES (%s, %s, %s, %s)", 
-                   (datetime.now(), 1, 2, 1))
-    cursor.execute("INSERT INTO history (`timestamp`, fileset, oldfileset, log) VALUES (%s, %s, %s, %s)", 
-                   (datetime.now(), 2, 1, 2))
-    
-    # Insert data into transactions
-    cursor.execute("INSERT INTO transactions (`transaction`, fileset) VALUES (%s, %s)", 
-                   (random.randint(1, 100), 1))
-    cursor.execute("INSERT INTO transactions (`transaction`, fileset) VALUES (%s, %s)", 
-                   (random.randint(1, 100), 2))
+    for _ in range(1000):
+        # Insert data into engine
+        cursor.execute("INSERT INTO engine (name, engineid) VALUES (%s, %s)", (random_string(), random_string()))
+        
+        # Insert data into game
+        cursor.execute("INSERT INTO game (name, engine, gameid, extra, platform, language) VALUES (%s, %s, %s, %s, %s, %s)", 
+                       (random_string(), 1, random_string(), random_string(), random_string(), random_string()))
+        
+        # Insert data into fileset
+        cursor.execute("INSERT INTO fileset (game, status, src, `key`, `megakey`, `timestamp`, detection_size) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
+                       (1, 'user', random_string(), random_string(), random_string(), datetime.now(), random.randint(1, 100)))
+        
+        # Insert data into file
+        cursor.execute("INSERT INTO file (name, size, checksum, fileset, detection) VALUES (%s, %s, %s, %s, %s)", 
+                       (random_string(), random.randint(1000, 10000), random_string(), 1, True))
+        
+        # Insert data into filechecksum
+        cursor.execute("INSERT INTO filechecksum (file, checksize, checktype, checksum) VALUES (%s, %s, %s, %s)", 
+                       (1, random_string(), random_string(), random_string()))
+        
+        # Insert data into queue
+        cursor.execute("INSERT INTO queue (time, notes, fileset, userid, commit) VALUES (%s, %s, %s, %s, %s)", 
+                       (datetime.now(), random_string(), 1, random.randint(1, 100), random_string()))
+        
+        # Insert data into log
+        cursor.execute("INSERT INTO log (`timestamp`, category, user, `text`) VALUES (%s, %s, %s, %s)", 
+                       (datetime.now(), random_string(), random_string(), random_string()))
+        
+        # Insert data into history
+        cursor.execute("INSERT INTO history (`timestamp`, fileset, oldfileset, log) VALUES (%s, %s, %s, %s)", 
+                       (datetime.now(), 1, 2, 1))
+        
+        # Insert data into transactions
+        cursor.execute("INSERT INTO transactions (`transaction`, fileset) VALUES (%s, %s)", 
+                       (random.randint(1, 100), 1))
 # for testing locally
-# insert_random_data()
+insert_random_data()
 
 conn.commit()
 conn.close()

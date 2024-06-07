@@ -139,8 +139,8 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
 
         counter = offset + 1
         for row in results:
-            if filename in ['games_list.php', 'user_games_list.php']:
-                html += f"<tr class='games_list' onclick='hyperlink(\"fileset.php?id={row['fileset']}\")'>"
+            if filename in ['games_list', 'user_games_list']:
+                html += f"<tr class='games_list' onclick='hyperlink(\"fileset?id={row['fileset']}\")'>"
             else:
                 html += "<tr>"
             html += f"<td>{counter}.</td>"
@@ -149,7 +149,7 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
                     continue
                 matches = re.search(r"Fileset:(\d+)", value)
                 if matches:
-                    value = re.sub(r"Fileset:(\d+)", f"<a href='fileset.php?id={matches.group(1)}'>Fileset:{matches.group(1)}</a>", value)
+                    value = re.sub(r"Fileset:(\d+)", f"<a href='fileset?id={matches.group(1)}'>Fileset:{matches.group(1)}</a>", value)
                 html += f"<td>{value}</td>"
             html += "</tr>"
             counter += 1
