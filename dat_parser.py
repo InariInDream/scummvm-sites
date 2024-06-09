@@ -5,7 +5,7 @@ from db_functions import db_insert, populate_matching_games
 
 def remove_quotes(string):
     # Remove quotes from value if they are present
-    if string[0] == "\"":
+    if string and string[0] == "\"":
         string = string[1:-1]
 
     return string
@@ -15,13 +15,13 @@ def map_checksum_data(content_string):
     temp = re.findall(r'("[^"]*")|\S+', content_string)
 
     for i in range(1, len(temp), 2):
-        if temp[i] == ')' or temp[i] in ['crc', 'sha1']:
-            continue
-
-        temp[i + 1] = remove_quotes(temp[i + 1])
-        if temp[i + 1] == ')':
-            temp[i + 1] = ""
-        arr[temp[i]] = temp[i + 1].replace("\\", "")
+        if i+1 < len(temp):
+            if temp[i] == ')' or temp[i] in ['crc', 'sha1']:
+                continue
+            temp[i + 1] = remove_quotes(temp[i + 1])
+            if temp[i + 1] == ')':
+                temp[i + 1] = ""
+            arr[temp[i]] = temp[i + 1].replace("\\", "")
 
     return arr
 

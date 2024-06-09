@@ -5,6 +5,7 @@ import getpass
 import time
 import hashlib
 import os
+from pymysql.converters import escape_string
 
 def db_connect():
     with open('mysql_config.json') as f:
@@ -56,12 +57,12 @@ def insert_game(engine_name, engineid, title, gameid, extra, platform, lang, con
     # Insert into table if not present
     if not exists:
         with conn.cursor() as cursor:
-            cursor.execute(f"INSERT INTO engine (name, engineid) VALUES ('{pymysql.escape_string(engine_name)}', '{engineid}')")
+            cursor.execute(f"INSERT INTO engine (name, engineid) VALUES ('{escape_string(engine_name)}', '{engineid}')")
             cursor.execute("SET @engine_last = LAST_INSERT_ID()")
 
     # Insert into game
     with conn.cursor() as cursor:
-        cursor.execute(f"INSERT INTO game (name, engine, gameid, extra, platform, language) VALUES ('{pymysql.escape_string(title)}', @engine_last, '{gameid}', '{pymysql.escape_string(extra)}', '{platform}', '{lang}')")
+        cursor.execute(f"INSERT INTO game (name, engine, gameid, extra, platform, language) VALUES ('{escape_string(title)}', @engine_last, '{gameid}', '{escape_string(extra)}', '{platform}', '{lang}')")
         cursor.execute("SET @game_last = LAST_INSERT_ID()")
 
 def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip=''):
@@ -84,7 +85,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         existing_entry = cursor.fetchone()
 
     if existing_entry is not None:
-        existing_entry = existing_entry[0]
+        existing_entry = existing_entry['id']
         with conn.cursor() as cursor:
             cursor.execute(f"SET @fileset_last = {existing_entry}")
 
@@ -94,7 +95,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
             log_text = f"Duplicate of Fileset:{existing_entry}, from user IP {ip}, {log_text}"
 
         user = f'cli:{getpass.getuser()}'
-        create_log(pymysql.escape_string(category_text), user, pymysql.escape_string(log_text))
+        create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
         if not detection:
             return False
@@ -114,14 +115,14 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
     category_text = f"Uploaded from {src}"
     with conn.cursor() as cursor:
         cursor.execute("SELECT @fileset_last")
-        fileset_last = cursor.fetchone()[0]
+        fileset_last = cursor.fetchone()['@fileset_last']
 
     log_text = f"Created Fileset:{fileset_last}, {log_text}"
     if src == 'user':
         log_text = f"Created Fileset:{fileset_last}, from user IP {ip}, {log_text}"
 
     user = f'cli:{getpass.getuser()}'
-    create_log(pymysql.escape_string(category_text), user, pymysql.escape_string(log_text))
+    create_log(escape_string(category_text), user, escape_string(log_text), conn)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
 
@@ -139,7 +140,7 @@ def insert_file(file, detection, src, conn):
                 checksize, checktype, checksum = get_checksum_props(key, value)
                 break
 
-    query = f"INSERT INTO file (name, size, checksum, fileset, detection) VALUES ('{pymysql.escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection})"
+    query = f"INSERT INTO file (name, size, checksum, fileset, detection) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection})"
     with conn.cursor() as cursor:
         cursor.execute(query)
 
@@ -167,11 +168,11 @@ def delete_filesets(conn):
 
 
 def create_log(category, user, text, conn):
-    query = f"INSERT INTO log (`timestamp`, category, user, `text`) VALUES (FROM_UNIXTIME({int(time.time())}), '{pymysql.escape_string(category)}', '{pymysql.escape_string(user)}', '{pymysql.escape_string(text)}')"
+    query = f"INSERT INTO log (`timestamp`, category, user, `text`) VALUES (FROM_UNIXTIME({int(time.time())}), '{escape_string(category)}', '{escape_string(user)}', '{escape_string(text)}')"
     with conn.cursor() as cursor:
         cursor.execute(query)
         cursor.execute("SELECT LAST_INSERT_ID()")
-        log_last = cursor.fetchone()[0]
+        log_last = cursor.fetchone()['LAST_INSERT_ID()']
 
     try:
         conn.commit()
@@ -224,13 +225,15 @@ def db_insert(data_arr):
 
     conn.cursor().execute(f"SET @fileset_time_last = {int(time.time())}")
 
-    transaction_id = conn.cursor().execute("SELECT MAX(`transaction`) FROM transactions").fetchone()[0] + 1
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT MAX(`transaction`) FROM transactions")
+        transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
 
     category_text = f"Uploaded from {src}"
     log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Transaction: {transaction_id}"
 
     user = f'cli:{getpass.getuser()}'
-    create_log(pymysql.escape_string(conn, category_text), user, pymysql.escape_string(conn, log_text))
+    create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
     for fileset in game_data:
         if detection:
@@ -260,16 +263,17 @@ def db_insert(data_arr):
 
     if detection:
         conn.cursor().execute("UPDATE fileset SET status = 'obsolete' WHERE `timestamp` != FROM_UNIXTIME(@fileset_time_last) AND status = 'detection'")
-
-    fileset_insertion_count = conn.cursor().execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}").fetchone()[0]
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
+    fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
     category_text = f"Uploaded from {src}"
     log_text = f"Completed loading DAT file, filename '{filepath}', size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
-
+    
     if not conn.commit():
         print("Inserting failed")
     else:
         user = f'cli:{getpass.getuser()}'
-        create_log(pymysql.escape_string(conn, category_text), user, pymysql.escape_string(conn, log_text))
+        create_log(escape_string(conn, category_text), user, escape_string(conn, log_text))
 
 def compare_filesets(id1, id2, conn):
     with conn.cursor() as cursor:
@@ -323,7 +327,7 @@ def find_matching_game(game_files):
     for key, value in Counter(matching_filesets).items():
         with conn.cursor() as cursor:
             cursor.execute(f"SELECT COUNT(file.id) FROM file JOIN fileset ON file.fileset = fileset.id WHERE fileset.id = '{key}'")
-            count_files_in_fileset = cursor.fetchone()[0]
+            count_files_in_fileset = cursor.fetchone()['COUNT(file.id)']
 
         # We use < instead of != since one file may have more than one entry in the fileset
         # We see this in Drascula English version, where one entry is duplicated
@@ -373,7 +377,7 @@ def merge_filesets(detection_id, dat_id):
 
         cursor.execute(f"INSERT INTO history (`timestamp`, fileset, oldfileset) VALUES (FROM_UNIXTIME({int(time.time())}), {dat_id}, {detection_id})")
         cursor.execute("SELECT LAST_INSERT_ID()")
-        history_last = cursor.fetchone()[0]
+        history_last = cursor.fetchone()['LAST_INSERT_ID()']
 
         cursor.execute(f"UPDATE history SET fileset = {dat_id} WHERE fileset = {detection_id}")
 
@@ -437,10 +441,10 @@ def populate_matching_games():
             user = f'cli:{getpass.getuser()}'
 
             # Merge log
-            create_log("Fileset merge", user, pymysql.escape_string(conn, f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0][0]}"))
+            create_log("Fileset merge", user, escape_string(conn, f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0][0]}"))
 
             # Matching log
-            log_last = create_log(pymysql.escape_string(conn, category_text), user, pymysql.escape_string(conn, log_text))
+            log_last = create_log(escape_string(conn, category_text), user, escape_string(conn, log_text))
 
             # Add log id to the history table
             cursor.execute(f"UPDATE history SET log = {log_last} WHERE id = {history_last}")

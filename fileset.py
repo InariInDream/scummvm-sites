@@ -264,7 +264,7 @@ def games_list():
     select_query = """
     SELECT engineid, gameid, extra, platform, language, game.name,
     status, fileset.id as fileset
-    FROM fileset
+    FROM game
     JOIN engine ON engine.id = game.engine
     JOIN fileset ON game.id = fileset.game
     """
