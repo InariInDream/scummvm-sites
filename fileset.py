@@ -284,5 +284,21 @@ def games_list():
     }
     return render_template_string(create_page(filename, 25, records_table, select_query, order, filters, mapping))
 
+@app.route('/logs')
+def logs():
+    filename = "logs"
+    records_table = "log"
+    select_query = "SELECT id, `timestamp`, category, user, `text` FROM log"
+    order = "ORDER BY `timestamp` DESC, id DESC"
+    filters = {
+        'id': 'log',
+        'timestamp': 'log',
+        'category': 'log',
+        'user': 'log',
+        'text': 'log'
+    }
+    return render_template_string(create_page(filename, 25, records_table, select_query, order, filters))
+
+
 if __name__ == '__main__':
     app.run()

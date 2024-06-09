@@ -268,12 +268,15 @@ def db_insert(data_arr):
     fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
     category_text = f"Uploaded from {src}"
     log_text = f"Completed loading DAT file, filename '{filepath}', size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
-    
-    if not conn.commit():
-        print("Inserting failed")
+
+    try:
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("Inserting failed:", e)
     else:
         user = f'cli:{getpass.getuser()}'
-        create_log(escape_string(conn, category_text), user, escape_string(conn, log_text))
+        create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
 def compare_filesets(id1, id2, conn):
     with conn.cursor() as cursor:

@@ -105,15 +105,15 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
 
     # Generate HTML
     html = f"""
-    <!DOCTYPE html>
-        <html>
-        <head>
-            <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
-        </head>
-        <body>
-    <form id='filters-form' method='GET' onsubmit='remove_empty_inputs()'>
-    <table>
-    """
+<!DOCTYPE html>
+    <html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
+    </head>
+    <body>
+<form id='filters-form' method='GET' onsubmit='remove_empty_inputs()'>
+<table>
+"""
     if not results:
         return "No results for given filters"
     if results:
@@ -132,26 +132,67 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
             if key == 'fileset':
                 continue
             vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'sort'])
-            if f"&sort={key}" not in vars:
-                html += f"<th><a href='{filename}?{vars}&sort={key}'>{key}</a></th>"
+            sort = request.args.get('sort', '')
+            if sort == key:
+                vars += f"&sort={key}-desc"
             else:
-                html += f"<th><a href='{filename}?{vars}'>{key}</a></th>"
+                vars += f"&sort={key}"
+            html += f"<th><a href='{filename}?{vars}'>{key}</a></th>"
 
         counter = offset + 1
         for row in results:
+            if counter == offset + 1:  # If it is the first run of the loop
+                if filters:
+                    html += "<tr class='filter'><td></td>"
+                    for key in row.keys():
+                        if key not in filters:
+                            html += "<td class='filter'></td>"
+                            continue
+
+                        # Filter textbox
+                        filter_value = request.args.get(key, "")
+
+                        html += f"<td class='filter'><input type='text' class='filter' placeholder='{key}' name='{key}' value='{filter_value}'/></td>\n"
+                    html += "</tr>"
+                    html += "<tr class='filter'><td></td><td class='filter'><input type='submit' value='Submit'></td></tr>"
+
+                html += "<th></th>\n"  # Numbering column
+                for key in row.keys():
+                    if key == 'fileset':
+                        continue
+
+                    # Preserve GET variables
+                    vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'sort'])
+                    if request.args.get('sort', '') == key:
+                        vars += f"&sort={key}-desc"
+                    else:
+                        vars += f"&sort={key}"
+
+                    if f"&sort={key}" not in vars:
+                        html += f"<th><a href='{filename}?{vars}&sort={key}'>{key}</th>\n"
+                    else:
+                        html += f"<th><a href='{filename}?{vars}'>{key}</th>\n"
+
             if filename in ['games_list', 'user_games_list']:
-                html += f"<tr class='games_list' onclick='hyperlink(\"fileset?id={row['fileset']}\")'>"
+                html += f"<tr class='games_list' onclick='hyperlink(\"fileset?id={row['fileset']}\")'>\n"
             else:
-                html += "<tr>"
-            html += f"<td>{counter}.</td>"
+                html += "<tr>\n"
+            html += f"<td>{counter}.</td>\n"
             for key, value in row.items():
                 if key == 'fileset':
                     continue
-                matches = re.search(r"Fileset:(\d+)", value)
-                if matches:
-                    value = re.sub(r"Fileset:(\d+)", f"<a href='fileset?id={matches.group(1)}'>Fileset:{matches.group(1)}</a>", value)
-                html += f"<td>{value}</td>"
-            html += "</tr>"
+
+                # Add links to fileset in logs table
+                if isinstance(value, str):
+                    matches = re.search(r"Fileset:(\d+)", value)
+                    if matches:
+                        fileset_id = matches.group(1)
+                        fileset_text = matches.group(0)
+                        value = value.replace(fileset_text, f"<a href='fileset?id={fileset_id}'>{fileset_text}</a>")
+
+                html += f"<td>{value}</td>\n"
+            html += "</tr>\n"
+
             counter += 1
 
     html += "</table></form>"
