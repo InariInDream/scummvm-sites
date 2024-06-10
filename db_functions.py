@@ -172,11 +172,14 @@ def create_log(category, user, text, conn):
     with conn.cursor() as cursor:
         try:
             cursor.execute(query)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Creating log failed: {e}")
+            log_last = None
+        else:
             cursor.execute("SELECT LAST_INSERT_ID()")
             log_last = cursor.fetchone()['LAST_INSERT_ID()']
-        except:
-            print("Creating log failed")
-
     return log_last
 
 def calc_key(fileset):
