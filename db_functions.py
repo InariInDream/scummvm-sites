@@ -170,14 +170,12 @@ def delete_filesets(conn):
 def create_log(category, user, text, conn):
     query = f"INSERT INTO log (`timestamp`, category, user, `text`) VALUES (FROM_UNIXTIME({int(time.time())}), '{escape_string(category)}', '{escape_string(user)}', '{escape_string(text)}')"
     with conn.cursor() as cursor:
-        cursor.execute(query)
-        cursor.execute("SELECT LAST_INSERT_ID()")
-        log_last = cursor.fetchone()['LAST_INSERT_ID()']
-
-    try:
-        conn.commit()
-    except:
-        print("Creating log failed")
+        try:
+            cursor.execute(query)
+            cursor.execute("SELECT LAST_INSERT_ID()")
+            log_last = cursor.fetchone()['LAST_INSERT_ID()']
+        except:
+            print("Creating log failed")
 
     return log_last
 
@@ -264,15 +262,14 @@ def db_insert(data_arr):
     if detection:
         conn.cursor().execute("UPDATE fileset SET status = 'obsolete' WHERE `timestamp` != FROM_UNIXTIME(@fileset_time_last) AND status = 'detection'")
     cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
+    
     fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
     category_text = f"Uploaded from {src}"
     log_text = f"Completed loading DAT file, filename '{filepath}', size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
 
     try:
-        conn.commit()
+        cur.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
     except Exception as e:
-        conn.rollback()
         print("Inserting failed:", e)
     else:
         user = f'cli:{getpass.getuser()}'
@@ -365,31 +362,32 @@ def find_matching_game(game_files):
 def merge_filesets(detection_id, dat_id):
     conn = db_connect()
 
-    with conn.cursor() as cursor:
-        cursor.execute(f"SELECT DISTINCT(filechecksum.checksum), checksize, checktype FROM filechecksum JOIN file on file.id = filechecksum.file WHERE fileset = '{detection_id}'")
-        detection_files = cursor.fetchall()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT DISTINCT(filechecksum.checksum), checksize, checktype FROM filechecksum JOIN file on file.id = filechecksum.file WHERE fileset = '{detection_id}'")
+            detection_files = cursor.fetchall()
 
-        for file in detection_files:
-            checksum = file[0]
-            checksize = file[1]
-            checktype = file[2]
+            for file in detection_files:
+                checksum = file[0]
+                checksize = file[1]
+                checktype = file[2]
 
-            cursor.execute(f"DELETE FROM file WHERE checksum = '{checksum}' AND fileset = {detection_id} LIMIT 1")
+                cursor.execute(f"DELETE FROM file WHERE checksum = '{checksum}' AND fileset = {detection_id} LIMIT 1")
+                cursor.execute(f"UPDATE file JOIN filechecksum ON filechecksum.file = file.id SET detection = TRUE, checksize = {checksize}, checktype = '{checktype}' WHERE fileset = '{dat_id}' AND filechecksum.checksum = '{checksum}'")
 
-            cursor.execute(f"UPDATE file JOIN filechecksum ON filechecksum.file = file.id SET detection = TRUE, checksize = {checksize}, checktype = '{checktype}' WHERE fileset = '{dat_id}' AND filechecksum.checksum = '{checksum}'")
+            cursor.execute(f"INSERT INTO history (`timestamp`, fileset, oldfileset) VALUES (FROM_UNIXTIME({int(time.time())}), {dat_id}, {detection_id})")
+            cursor.execute("SELECT LAST_INSERT_ID()")
+            history_last = cursor.fetchone()['LAST_INSERT_ID()']
 
-        cursor.execute(f"INSERT INTO history (`timestamp`, fileset, oldfileset) VALUES (FROM_UNIXTIME({int(time.time())}), {dat_id}, {detection_id})")
-        cursor.execute("SELECT LAST_INSERT_ID()")
-        history_last = cursor.fetchone()['LAST_INSERT_ID()']
+            cursor.execute(f"UPDATE history SET fileset = {dat_id} WHERE fileset = {detection_id}")
+            cursor.execute(f"DELETE FROM fileset WHERE id = {detection_id}")
 
-        cursor.execute(f"UPDATE history SET fileset = {dat_id} WHERE fileset = {detection_id}")
-
-        cursor.execute(f"DELETE FROM fileset WHERE id = {detection_id}")
-
-        try:
-            conn.commit()
-        except:
-            print("Error merging filesets")
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Error merging filesets: {e}")
+    finally:
+        conn.close()
 
     return history_last
 
@@ -452,5 +450,7 @@ def populate_matching_games():
             # Add log id to the history table
             cursor.execute(f"UPDATE history SET log = {log_last} WHERE id = {history_last}")
 
-        if not conn.commit():
+        try:
+            conn.commit()
+        except:
             print("Updating matched games failed")
