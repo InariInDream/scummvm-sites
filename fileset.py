@@ -21,6 +21,31 @@ conn = pymysql.connect(
     autocommit=False
 )
 
+@app.route('/')
+def index():
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+    <h1>Fileset Database</h1>
+    <h2>Fileset Actions</h2>
+    <ul>
+        <li><a href="{{ url_for('fileset') }}">Fileset</a></li>
+        <li><a href="{{ url_for('user_games_list') }}">User Games List</a></li>
+        <li><a href="{{ url_for('games_list') }}">Games List</a></li>
+    </ul>
+    <h2>Logs</h2>
+    <ul>
+        <li><a href="{{ url_for('logs') }}">Logs</a></li>
+    </ul>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
 @app.route('/fileset', methods=['GET', 'POST'])
 def fileset():
     id = request.args.get('id', default = 1, type = int)
