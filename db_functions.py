@@ -266,12 +266,11 @@ def db_insert(data_arr):
         conn.cursor().execute("UPDATE fileset SET status = 'obsolete' WHERE `timestamp` != FROM_UNIXTIME(@fileset_time_last) AND status = 'detection'")
     cur = conn.cursor()
     
-    fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
-    category_text = f"Uploaded from {src}"
-    log_text = f"Completed loading DAT file, filename '{filepath}', size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
-
     try:
         cur.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
+        fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
+        category_text = f"Uploaded from {src}"
+        log_text = f"Completed loading DAT file, filename '{filepath}', size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
     except Exception as e:
         print("Inserting failed:", e)
     else:
