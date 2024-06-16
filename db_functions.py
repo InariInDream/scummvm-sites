@@ -52,7 +52,7 @@ def insert_game(engine_name, engineid, title, gameid, extra, platform, lang, con
         res = cursor.fetchone()
         if res is not None:
             exists = True
-            cursor.execute(f"SET @engine_last = '{res[0]}'")
+            cursor.execute(f"SET @engine_last = '{res['id']}'")
 
     # Insert into table if not present
     if not exists:
@@ -102,7 +102,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
 
         with conn.cursor() as cursor:
             cursor.execute(f"UPDATE fileset SET `timestamp` = FROM_UNIXTIME(@fileset_time_last) WHERE id = {existing_entry}")
-            cursor.execute("UPDATE fileset SET status = 'detection' WHERE id = {existing_entry} AND status = 'obsolete'")
+            cursor.execute(f"UPDATE fileset SET status = 'detection' WHERE id = {existing_entry} AND status = 'obsolete'")
             cursor.execute("DELETE FROM game WHERE id = @game_last")
         return False
 

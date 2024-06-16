@@ -11,17 +11,14 @@ def remove_quotes(string):
     return string
 
 def map_checksum_data(content_string):
-    arr = {}
-    temp = re.findall(r'("[^"]*")|\S+', content_string)
+    arr = []
+    
+    rom_props = re.findall(r'(\w+)\s+"([^"]*)"\s+size\s+(\d+)\s+md5-5000\s+([a-f0-9]+)', content_string)
 
-    for i in range(1, len(temp), 2):
-        if i+1 < len(temp):
-            if temp[i] == ')' or temp[i] in ['crc', 'sha1']:
-                continue
-            temp[i + 1] = remove_quotes(temp[i + 1])
-            if temp[i + 1] == ')':
-                temp[i + 1] = ""
-            arr[temp[i]] = temp[i + 1].replace("\\", "")
+    for prop in rom_props:
+        key, name, size, md5 = prop
+        item = {'name': name, 'size': int(size), 'md5-5000': md5}
+        arr.append(item)
 
     return arr
 
@@ -39,10 +36,9 @@ def map_key_values(content_string, arr):
 
         # Handle duplicate keys (if the key is rom) and add values to a array instead
         if pair[0] == "rom":
-            if pair[0] in arr:
-                arr[pair[0]].append(map_checksum_data(pair[1]))
-            else:
-                arr[pair[0]] = [map_checksum_data(pair[1])]
+            if 'rom' not in arr:
+                arr['rom'] = []
+            arr['rom'].extend(map_checksum_data(pair[1]))
         else:
             arr[pair[0]] = pair[1].replace("\\", "")
             
@@ -96,16 +92,16 @@ def parse_dat(dat_filepath):
         for data_segment in matches:
             if "clrmamepro" in content[data_segment[1] - 11: data_segment[1]] or \
                 "scummvm" in content[data_segment[1] - 8: data_segment[1]]:
-                map_key_values(data_segment[0], header)
+                header = map_key_values(data_segment[0], header)
             elif "game" in content[data_segment[1] - 5: data_segment[1]]:
                 temp = {}
-                map_key_values(data_segment[0], temp)
+                temp = map_key_values(data_segment[0], temp)
                 game_data.append(temp)
             elif "resource" in content[data_segment[1] - 9: data_segment[1]]:
                 temp = {}
-                map_key_values(data_segment[0], temp)
+                temp = map_key_values(data_segment[0], temp)
                 resources[temp["name"]] = temp
-
+    # print(header, game_data, resources)
     return header, game_data, resources, dat_filepath
 
 # Process command line args
