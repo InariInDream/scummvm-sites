@@ -105,6 +105,10 @@ def parse_dat(dat_filepath):
     return header, game_data, resources, dat_filepath
 
 # Process command line args
+if len(sys.argv) == 1:
+    print("Usage: python dat_parser.py [--upload <filepaths>...] [--match]")
+    sys.exit(1)
+
 if "--upload" in sys.argv:
     index = sys.argv.index("--upload")
     for filepath in sys.argv[index + 1:]:
