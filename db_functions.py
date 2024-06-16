@@ -5,6 +5,7 @@ import getpass
 import time
 import hashlib
 import os
+import argparse
 from pymysql.converters import escape_string
 
 def db_connect():
@@ -83,7 +84,11 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
             cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
 
         existing_entry = cursor.fetchone()
-
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--user", help="override user")
+    global args
+    args = parser.parse_args()
     if existing_entry is not None:
         existing_entry = existing_entry['id']
         with conn.cursor() as cursor:
@@ -94,7 +99,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         if src == 'user':
             log_text = f"Duplicate of Fileset:{existing_entry}, from user IP {ip}, {log_text}"
 
-        user = f'cli:{getpass.getuser()}'
+        user = args.user if args.user else f'cli:{getpass.getuser()}'
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
         if not detection:
@@ -121,7 +126,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
     if src == 'user':
         log_text = f"Created Fileset:{fileset_last}, from user IP {ip}, {log_text}"
 
-    user = f'cli:{getpass.getuser()}'
+    user = args.user if args.user else f'cli:{getpass.getuser()}'
     create_log(escape_string(category_text), user, escape_string(log_text), conn)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
@@ -214,26 +219,44 @@ def db_insert(data_arr):
     resources = data_arr[2]
     filepath = data_arr[3]
 
-    conn = db_connect()
+    try:
+        conn = db_connect()
+    except Exception as e:
+        print(f"Failed to connect to database: {e}")
+        return
 
-    author = header["author"]
-    version = header["version"]
+    try:
+        author = header["author"]
+        version = header["version"]
+    except KeyError as e:
+        print(f"Missing key in header: {e}")
+        return
 
     src = "dat" if author not in ["scan", "scummvm"] else author
 
     detection = (src == "scummvm")
     status = "detection" if detection else src
 
-    conn.cursor().execute(f"SET @fileset_time_last = {int(time.time())}")
+    try:
+        conn.cursor().execute(f"SET @fileset_time_last = {int(time.time())}")
+    except Exception as e:
+        print(f"Failed to execute query: {e}")
+        return
 
-    with conn.cursor() as cursor:
-        cursor.execute("SELECT MAX(`transaction`) FROM transactions")
-        transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT MAX(`transaction`) FROM transactions")
+            transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
+    except Exception as e:
+        print(f"Failed to execute query: {e}")
+    finally:
+        conn.close()
 
     category_text = f"Uploaded from {src}"
     log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Transaction: {transaction_id}"
 
-    user = f'cli:{getpass.getuser()}'
+    
+    user = args.user if args.user else f'cli:{getpass.getuser()}'
     create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
     for fileset in game_data:
@@ -274,7 +297,7 @@ def db_insert(data_arr):
     except Exception as e:
         print("Inserting failed:", e)
     else:
-        user = f'cli:{getpass.getuser()}'
+        user = args.user if args.user else f'cli:{getpass.getuser()}'
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
 def compare_filesets(id1, id2, conn):
@@ -441,7 +464,8 @@ def populate_matching_games():
         history_last = merge_filesets(matched_game["fileset"], fileset[0][0])
 
         if cursor.execute(query):
-            user = f'cli:{getpass.getuser()}'
+
+            user = args.user if args.user else f'cli:{getpass.getuser()}'
 
             # Merge log
             create_log("Fileset merge", user, escape_string(conn, f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0][0]}"))
