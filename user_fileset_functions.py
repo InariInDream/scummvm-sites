@@ -1,6 +1,6 @@
 import hashlib
 import time
-from db_functions import db_connect, insert_fileset, insert_file, insert_filechecksum, find_matching_game, merge_filesets, create_log
+from db_functions import db_connect, insert_fileset, insert_file, insert_filechecksum, find_matching_game, merge_filesets, create_log, calc_megakey
 import getpass
 import pymysql
 
@@ -37,7 +37,7 @@ def user_insert_fileset(user_fileset, ip, conn):
     src = 'user'
     detection = False
     key = ''
-    megakey = user_calc_key(user_fileset)
+    megakey = calc_megakey(user_fileset)
     with conn.cursor() as cursor:
         cursor.execute("SELECT MAX(`transaction`) FROM transactions")
         transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
