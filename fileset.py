@@ -169,6 +169,9 @@ def fileset():
                 for key, value in row.items():
                     if key != 'id':
                         html += f"<td>{value}</td>\n"
+                    if key == 'detection':
+                        if value == 1:
+                            html += f"<td><button onclick=\"location.href='/fileset/{row['id']}/merge'\">Merge</button></td>"
                 html += "</tr>\n"
                 counter += 1
             html += "</table>\n"
@@ -211,6 +214,184 @@ def fileset():
                     html += "</tr>\n"
             html += "</table>\n"
             return render_template_string(html)
+    finally:
+        connection.close()
+        
+@app.route('/fileset/<int:id>/merge', methods=['GET', 'POST'])
+def merge_fileset(id):
+    if request.method == 'POST':
+        search_query = request.form['search']
+        
+        with open('mysql_config.json') as f:
+            mysql_cred = json.load(f)
+
+        connection = pymysql.connect(
+            host=mysql_cred["servername"],
+            user=mysql_cred["username"],
+            password=mysql_cred["password"],
+            db=mysql_cred["dbname"],
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
+        )
+
+        try:
+            with connection.cursor() as cursor:
+                query = f"""
+                SELECT id, gameid, platform, language
+                FROM fileset
+                WHERE gameid LIKE '%{search_query}%' OR platform LIKE '%{search_query}%' OR language LIKE '%{search_query}%'
+                """
+                cursor.execute(query)
+                results = cursor.fetchall()
+
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
+                </head>
+                <body>
+                <h2>Search Results for '{search_query}'</h2>
+                <form method="POST">
+                    <input type="text" name="search" placeholder="Search fileset">
+                    <input type="submit" value="Search">
+                </form>
+                <table>
+                <tr><th>ID</th><th>Game ID</th><th>Platform</th><th>Language</th><th>Action</th></tr>
+                """
+                for result in results:
+                    html += f"""
+                    <tr>
+                        <td>{result['id']}</td>
+                        <td>{result['gameid']}</td>
+                        <td>{result['platform']}</td>
+                        <td>{result['language']}</td>
+                        <td><a href="/fileset/{id}/merge/confirm?target_id={result['id']}">Select</a></td>
+                    </tr>
+                    """
+                html += "</table>\n"
+                html += "</body>\n</html>"
+
+                return render_template_string(html)
+
+        finally:
+            connection.close()
+
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+    <h2>Search Fileset to Merge</h2>
+    <form method="POST">
+        <input type="text" name="search" placeholder="Search fileset">
+        <input type="submit" value="Search">
+    </form>
+    </body>
+    </html>
+    '''
+    
+@app.route('/fileset/<int:id>/merge/confirm', methods=['GET', 'POST'])
+def confirm_merge(id):
+    target_id = request.args.get('target_id', type=int)
+
+    with open('mysql_config.json') as f:
+        mysql_cred = json.load(f)
+
+    connection = pymysql.connect(
+        host=mysql_cred["servername"],
+        user=mysql_cred["username"],
+        password=mysql_cred["password"],
+        db=mysql_cred["dbname"],
+        charset='utf8mb4',
+        cursorclass=pymysql.cursors.DictCursor
+    )
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
+            source_fileset = cursor.fetchone()
+
+            cursor.execute(f"SELECT * FROM fileset WHERE id = {target_id}")
+            target_fileset = cursor.fetchone()
+
+            html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+            </head>
+            <body>
+            <h2>Confirm Merge</h2>
+            <table>
+            <tr><th>Field</th><th>Source Fileset</th><th>Target Fileset</th></tr>
+            """
+
+            for column in source_fileset.keys():
+                if column != 'id':
+                    html += f"<tr><td>{column}</td><td>{source_fileset[column]}</td><td>{target_fileset[column]}</td></tr>"
+
+            html += """
+            </table>
+            <form method="POST" action="{{ url_for('execute_merge', id=id) }}">
+                <input type="hidden" name="source_id" value="{source_fileset['id']}">
+                <input type="hidden" name="target_id" value="{target_fileset['id']}">
+                <input type="submit" value="Confirm Merge">
+            </form>
+            <form action="/fileset/{id}">
+                <input type="submit" value="Cancel">
+            </form>
+            </body>
+            </html>
+            """
+            return render_template_string(html)
+
+    finally:
+        connection.close()
+
+@app.route('/fileset/<int:id>/merge/execute', methods=['POST'])
+def execute_merge(id):
+    source_id = request.form['source_id']
+    target_id = request.form['target_id']
+
+    with open('mysql_config.json') as f:
+        mysql_cred = json.load(f)
+
+    connection = pymysql.connect(
+        host=mysql_cred["servername"],
+        user=mysql_cred["username"],
+        password=mysql_cred["password"],
+        db=mysql_cred["dbname"],
+        charset='utf8mb4',
+        cursorclass=pymysql.cursors.DictCursor
+    )
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT * FROM fileset WHERE id = {source_id}")
+            source_fileset = cursor.fetchone()
+
+            cursor.execute(f"""
+            UPDATE fileset SET
+                game = '{source_fileset['game']}',
+                status = '{source_fileset['status']}',
+                `key` = '{source_fileset['key']}',
+                megakey = '{source_fileset['megakey']}',
+                `timestamp` = '{source_fileset['timestamp']}'
+            WHERE id = {target_id}
+            """)
+
+            cursor.execute(f"""
+            INSERT INTO history (`timestamp`, fileset, oldfileset, log)
+            VALUES (NOW(), {target_id}, {source_id}, 'Merged fileset {source_id} into {target_id}')
+            """)
+
+            connection.commit()
+
+            return redirect(url_for('fileset', id=target_id))
+
     finally:
         connection.close()
 
