@@ -7,6 +7,7 @@ import hashlib
 import os
 import argparse
 from pymysql.converters import escape_string
+from collections import defaultdict
 
 def db_connect():
     with open('mysql_config.json') as f:
@@ -325,62 +326,62 @@ def status_to_match(status):
     order = ["detection", "dat", "scan", "partialmatch", "fullmatch", "user"]
     return order[:order.index(status)]
 
+def get_fileset_ids_with_matching_files(files, conn):
+    if not files:
+        return []
+    
+    checksums = [file['checksum'] for file in files if 'checksum' in file]
+    if not checksums:
+        return []
+
+    placeholders = ', '.join(['%s'] * len(checksums))
+
+    query = f"""
+    SELECT DISTINCT file.fileset
+    FROM file
+    WHERE file.checksum IN ({placeholders})
+    """
+    
+    with conn.cursor() as cursor:
+        cursor.execute(query, checksums)
+        result = cursor.fetchall()
+
+    fileset_ids = [row['fileset'] for row in result]
+
+    return fileset_ids
+
 def find_matching_game(game_files):
-    matching_games = []  # All matching games
-    matching_filesets = []  # All filesets containing one file from game_files
-    matches_count = 0  # Number of files with a matching detection entry
+    matching_games = defaultdict(list)
 
     conn = db_connect()
 
-    for file in game_files:
-        checksum = file[1]
+    fileset_ids = get_fileset_ids_with_matching_files(game_files, conn)
 
-        query = f"SELECT file.fileset as file_fileset FROM filechecksum JOIN file ON filechecksum.file = file.id WHERE filechecksum.checksum = '{checksum}' AND file.detection = TRUE"
-        with conn.cursor() as cursor:
-            cursor.execute(query)
-            records = cursor.fetchall()
+    while len(fileset_ids) > 100:
+        game_files.pop()
+        fileset_ids = get_fileset_ids_with_matching_files(game_files, conn)
 
-        # If file is not part of detection entries, skip it
-        if len(records) == 0:
-            continue
-
-        matches_count += 1
-        for record in records:
-            matching_filesets.append(record[0])
-
-    # Check if there is a fileset_id that is present in all results
-    for key, value in Counter(matching_filesets).items():
-        with conn.cursor() as cursor:
-            cursor.execute(f"SELECT COUNT(file.id) FROM file JOIN fileset ON file.fileset = fileset.id WHERE fileset.id = '{key}'")
-            count_files_in_fileset = cursor.fetchone()['COUNT(file.id)']
-
-        # We use < instead of != since one file may have more than one entry in the fileset
-        # We see this in Drascula English version, where one entry is duplicated
-        if value < matches_count or value < count_files_in_fileset:
-            continue
-
-        with conn.cursor() as cursor:
-            cursor.execute(f"SELECT engineid, game.id, gameid, platform, language, `key`, src, fileset.id as fileset FROM game JOIN fileset ON fileset.game = game.id JOIN engine ON engine.id = game.engine WHERE fileset.id = '{key}'")
-            records = cursor.fetchall()
-
-        matching_games.append(records[0])
-
-    if len(matching_games) != 1:
+    if not fileset_ids:
         return matching_games
+    
+    placeholders = ', '.join(['%s'] * len(fileset_ids))
 
-    # Check the current fileset priority with that of the match
+    query = f"""
+    SELECT fileset.id AS fileset, engineid, game.id AS game_id, gameid, platform, language, `key`, src
+    FROM fileset
+    JOIN file ON file.fileset = fileset.id
+    JOIN game ON game.id = fileset.game
+    JOIN engine ON engine.id = game.engine
+    WHERE fileset.id IN ({placeholders})
+    """
+
     with conn.cursor() as cursor:
-        cursor.execute(f"SELECT id FROM fileset, ({query}) AS res WHERE id = file_fileset AND status IN ({', '.join(['%s']*len(game_files[3]))})", status_to_match(game_files[3]))
+        cursor.execute(query, fileset_ids)
         records = cursor.fetchall()
-
-    # If priority order is correct
-    if len(records) != 0:
-        return matching_games
-
-    if compare_filesets(matching_games[0]['fileset'], game_files[0][0], conn):
-        with conn.cursor() as cursor:
-            cursor.execute(f"UPDATE fileset SET `delete` = TRUE WHERE id = {game_files[0][0]}")
-        return []
+    
+    for record in records:
+        fileset_id = record['fileset']
+        matching_games[fileset_id].append(record)
 
     return matching_games
 
@@ -420,14 +421,19 @@ def merge_filesets(detection_id, dat_id):
 def populate_matching_games():
     conn = db_connect()
 
-    # Getting unmatched filesets
     unmatched_filesets = []
+    unmatched_files = []
 
     with conn.cursor() as cursor:
-        cursor.execute("SELECT fileset.id, filechecksum.checksum, src, status FROM fileset JOIN file ON file.fileset = fileset.id JOIN filechecksum ON file.id = filechecksum.file WHERE fileset.game IS NULL AND status != 'user'")
+        cursor.execute("""
+            SELECT fileset.id, filechecksum.checksum, src, status
+            FROM fileset
+            JOIN file ON file.fileset = fileset.id
+            JOIN filechecksum ON file.id = filechecksum.file
+            WHERE fileset.game IS NULL AND status != 'user'
+        """)
         unmatched_files = cursor.fetchall()
 
-    # Splitting them into different filesets
     i = 0
     while i < len(unmatched_files):
         cur_fileset = unmatched_files[i][0]
@@ -440,40 +446,33 @@ def populate_matching_games():
     for fileset in unmatched_filesets:
         matching_games = find_matching_game(fileset)
 
-        if len(matching_games) != 1: # If there is no match/non-unique match
+        if len(matching_games) != 1:  
             continue
 
-        matched_game = matching_games[0]
+        matched_game = matching_games[list(matching_games.keys())[0]][0]
 
-        # Update status depending on $matched_game["src"] (dat -> partialmatch, scan -> fullmatch)
         status = fileset[0][2]
         if fileset[0][2] == "dat":
             status = "partialmatch"
         elif fileset[0][2] == "scan":
             status = "fullmatch"
 
-        # Convert NULL values to string with value NULL for printing
         matched_game = {k: 'NULL' if v is None else v for k, v in matched_game.items()}
 
         category_text = f"Matched from {fileset[0][2]}"
         log_text = f"Matched game {matched_game['engineid']}:\n{matched_game['gameid']}-{matched_game['platform']}-{matched_game['language']}\nvariant {matched_game['key']}. State {status}. Fileset:{fileset[0][0]}."
 
-        # Updating the fileset.game value to be $matched_game["id"]
-        query = f"UPDATE fileset SET game = {matched_game['id']}, status = '{status}', `key` = '{matched_game['key']}' WHERE id = {fileset[0][0]}"
+        query = f"UPDATE fileset SET game = {matched_game['game_id']}, status = '{status}', `key` = '{matched_game['key']}' WHERE id = {fileset[0][0]}"
 
         history_last = merge_filesets(matched_game["fileset"], fileset[0][0])
 
         if cursor.execute(query):
-
             user = args.user if args.user else f'cli:{getpass.getuser()}'
 
-            # Merge log
-            create_log("Fileset merge", user, escape_string(conn, f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0][0]}"))
+            create_log("Fileset merge", user, escape_string(f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0][0]}"), conn)
 
-            # Matching log
-            log_last = create_log(escape_string(conn, category_text), user, escape_string(conn, log_text))
+            log_last = create_log(escape_string(f"{category_text}"), user, escape_string(f"{log_text}"), conn)
 
-            # Add log id to the history table
             cursor.execute(f"UPDATE history SET log = {log_last} WHERE id = {history_last}")
 
         try:
