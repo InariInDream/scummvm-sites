@@ -254,7 +254,7 @@ def db_insert(data_arr):
         conn.close()
 
     category_text = f"Uploaded from {src}"
-    log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Transaction: {transaction_id}"
+    log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}. Transaction: {transaction_id}"
 
     
     user = args.user if args.user else f'cli:{getpass.getuser()}'

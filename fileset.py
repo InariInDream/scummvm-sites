@@ -171,7 +171,7 @@ def fileset():
                         html += f"<td>{value}</td>\n"
                     if key == 'detection':
                         if value == 1:
-                            html += f"<td><button onclick=\"location.href='/fileset/{row['id']}/merge'\">Merge</button></td>"
+                            html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Merge</button></td>"
                 html += "</tr>\n"
                 counter += 1
             html += "</table>\n"
@@ -237,10 +237,10 @@ def merge_fileset(id):
         try:
             with connection.cursor() as cursor:
                 query = f"""
-                SELECT fileset.id, game.id AS game_id, platform, language
+                SELECT fileset.id, game.id AS game_id, platform, language, game.name
                 FROM fileset
                 JOIN game ON game.id = fileset.id
-                WHERE game.id LIKE '%{search_query}%' OR platform LIKE '%{search_query}%' OR language LIKE '%{search_query}%'
+                WHERE game.name LIKE '%{search_query}%' OR platform LIKE '%{search_query}%' OR language LIKE '%{search_query}%'
                 """
                 cursor.execute(query)
                 results = cursor.fetchall()
@@ -258,13 +258,13 @@ def merge_fileset(id):
                     <input type="submit" value="Search">
                 </form>
                 <table>
-                <tr><th>ID</th><th>Game ID</th><th>Platform</th><th>Language</th><th>Action</th></tr>
+                <tr><th>ID</th><th>Game Name</th><th>Platform</th><th>Language</th><th>Action</th></tr>
                 """
                 for result in results:
                     html += f"""
                     <tr>
                         <td>{result['id']}</td>
-                        <td>{result['game_id']}</td>
+                        <td>{result['name']}</td>
                         <td>{result['platform']}</td>
                         <td>{result['language']}</td>
                         <td><a href="/fileset/{id}/merge/confirm?target_id={result['id']}">Select</a></td>
@@ -312,10 +312,10 @@ def confirm_merge(id):
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
+            cursor.execute(f"SELECT * FROM game WHERE id = {id}")
             source_fileset = cursor.fetchone()
 
-            cursor.execute(f"SELECT * FROM fileset WHERE id = {target_id}")
+            cursor.execute(f"SELECT * FROM game WHERE id = {target_id}")
             target_fileset = cursor.fetchone()
 
             html = """
@@ -333,7 +333,7 @@ def confirm_merge(id):
                 if column != 'id':
                     html += f"<tr><td>{column}</td><td>{source_fileset[column]}</td><td>{target_fileset[column]}</td></tr>"
 
-            html += """
+            html += f"""
             </table>
             <form method="POST" action="{{ url_for('execute_merge', id=id) }}">
                 <input type="hidden" name="source_id" value="{source_fileset['id']}">
