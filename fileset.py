@@ -237,9 +237,10 @@ def merge_fileset(id):
         try:
             with connection.cursor() as cursor:
                 query = f"""
-                SELECT id, gameid, platform, language
+                SELECT fileset.id, game.id AS game_id, platform, language
                 FROM fileset
-                WHERE gameid LIKE '%{search_query}%' OR platform LIKE '%{search_query}%' OR language LIKE '%{search_query}%'
+                JOIN game ON game.id = fileset.id
+                WHERE game.id LIKE '%{search_query}%' OR platform LIKE '%{search_query}%' OR language LIKE '%{search_query}%'
                 """
                 cursor.execute(query)
                 results = cursor.fetchall()
@@ -263,7 +264,7 @@ def merge_fileset(id):
                     html += f"""
                     <tr>
                         <td>{result['id']}</td>
-                        <td>{result['gameid']}</td>
+                        <td>{result['game_id']}</td>
                         <td>{result['platform']}</td>
                         <td>{result['language']}</td>
                         <td><a href="/fileset/{id}/merge/confirm?target_id={result['id']}">Select</a></td>
@@ -328,7 +329,6 @@ def confirm_merge(id):
             <table>
             <tr><th>Field</th><th>Source Fileset</th><th>Target Fileset</th></tr>
             """
-
             for column in source_fileset.keys():
                 if column != 'id':
                     html += f"<tr><td>{column}</td><td>{source_fileset[column]}</td><td>{target_fileset[column]}</td></tr>"
