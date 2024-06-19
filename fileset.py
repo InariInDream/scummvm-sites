@@ -312,10 +312,13 @@ def confirm_merge(id):
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f"SELECT * FROM game WHERE id = {id}")
+            cursor.execute(f"""SELECT * FROM fileset JOIN game ON game.id = fileset.id WHERE fileset.id = {id}
+            """)
             source_fileset = cursor.fetchone()
 
-            cursor.execute(f"SELECT * FROM game WHERE id = {target_id}")
+            cursor.execute(f"""SELECT * FROM fileset JOIN game ON game.id = fileset.id WHERE fileset.id = {target_id}
+                            
+            """)
             target_fileset = cursor.fetchone()
 
             html = """
@@ -330,23 +333,24 @@ def confirm_merge(id):
             <tr><th>Field</th><th>Source Fileset</th><th>Target Fileset</th></tr>
             """
             for column in source_fileset.keys():
+                print(column)
                 if column != 'id':
                     html += f"<tr><td>{column}</td><td>{source_fileset[column]}</td><td>{target_fileset[column]}</td></tr>"
 
-            html += f"""
+            html += """
             </table>
             <form method="POST" action="{{ url_for('execute_merge', id=id) }}">
-                <input type="hidden" name="source_id" value="{source_fileset['id']}">
-                <input type="hidden" name="target_id" value="{target_fileset['id']}">
+                <input type="hidden" name="source_id" value="{{ source_fileset['id'] }}">
+                <input type="hidden" name="target_id" value="{{ target_fileset['id'] }}">
                 <input type="submit" value="Confirm Merge">
             </form>
-            <form action="/fileset/{id}">
+            <form action="{{ url_for('fileset', id=id) }}">
                 <input type="submit" value="Cancel">
             </form>
             </body>
             </html>
             """
-            return render_template_string(html)
+            return render_template_string(html, source_fileset=source_fileset, target_fileset=target_fileset, id=id)
 
     finally:
         connection.close()
@@ -382,10 +386,10 @@ def execute_merge(id):
                 `timestamp` = '{source_fileset['timestamp']}'
             WHERE id = {target_id}
             """)
-
+                
             cursor.execute(f"""
             INSERT INTO history (`timestamp`, fileset, oldfileset, log)
-            VALUES (NOW(), {target_id}, {source_id}, 'Merged fileset {source_id} into {target_id}')
+            VALUES (NOW(), {target_id}, {source_id}, {1})
             """)
 
             connection.commit()
