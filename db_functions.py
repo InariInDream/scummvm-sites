@@ -5,7 +5,6 @@ import getpass
 import time
 import hashlib
 import os
-import argparse
 from pymysql.converters import escape_string
 from collections import defaultdict
 
@@ -85,11 +84,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
             cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
 
         existing_entry = cursor.fetchone()
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--user", help="override user")
-    global args
-    args = parser.parse_args()
+
     if existing_entry is not None:
         existing_entry = existing_entry['id']
         with conn.cursor() as cursor:
@@ -100,7 +95,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         if src == 'user':
             log_text = f"Duplicate of Fileset:{existing_entry}, from user IP {ip}, {log_text}"
 
-        user = args.user if args.user else f'cli:{getpass.getuser()}'
+        user = f'cli:{getpass.getuser()}'
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
         if not detection:
@@ -127,7 +122,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
     if src == 'user':
         log_text = f"Created Fileset:{fileset_last}, from user IP {ip}, {log_text}"
 
-    user = args.user if args.user else f'cli:{getpass.getuser()}'
+    user = f'cli:{getpass.getuser()}'
     create_log(escape_string(category_text), user, escape_string(log_text), conn)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
@@ -256,8 +251,7 @@ def db_insert(data_arr):
     category_text = f"Uploaded from {src}"
     log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}. Transaction: {transaction_id}"
 
-    
-    user = args.user if args.user else f'cli:{getpass.getuser()}'
+    user = f'cli:{getpass.getuser()}'
     create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
     for fileset in game_data:
@@ -298,7 +292,7 @@ def db_insert(data_arr):
     except Exception as e:
         print("Inserting failed:", e)
     else:
-        user = args.user if args.user else f'cli:{getpass.getuser()}'
+        user = f'cli:{getpass.getuser()}'
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
 def compare_filesets(id1, id2, conn):
@@ -467,7 +461,7 @@ def populate_matching_games():
         history_last = merge_filesets(matched_game["fileset"], fileset[0][0])
 
         if cursor.execute(query):
-            user = args.user if args.user else f'cli:{getpass.getuser()}'
+            user = f'cli:{getpass.getuser()}'
 
             create_log("Fileset merge", user, escape_string(f"Merged Fileset:{matched_game['fileset']} and Fileset:{fileset[0][0]}"), conn)
 
