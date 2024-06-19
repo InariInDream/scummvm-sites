@@ -80,7 +80,7 @@ def parse_dat(dat_filepath):
         print("File not readable")
         return
 
-    with open(dat_filepath, "r") as dat_file:
+    with open(dat_filepath, "r", encoding="utf-8") as dat_file:
         content = dat_file.read()
 
     header = {}
