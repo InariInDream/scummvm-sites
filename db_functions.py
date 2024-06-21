@@ -77,7 +77,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
 
     # Check if key/megakey already exists, if so, skip insertion (no quotes on purpose)
     with conn.cursor() as cursor:
-        if detection:
+        if not detection:
             cursor.execute(f"SELECT id FROM fileset WHERE `key` = {key}")
         else:
             cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
@@ -198,10 +198,9 @@ def calc_key(fileset):
     key_string = key_string.strip(':')
     return hashlib.md5(key_string.encode()).hexdigest()
 
-def calc_megakey(files):
-    key_string = ""
-
-    for file in files:
+def calc_megakey(fileset):
+    key_string = f":{fileset['platform']}:{fileset['language']}"
+    for file in fileset['rom']:
         for key, value in file.items():
             key_string += ':' + str(value)
 
@@ -260,7 +259,8 @@ def db_insert(data_arr):
                 fileset["rom"] = fileset["rom"] + resources[fileset["romof"]]["rom"]
 
         key = calc_key(fileset) if detection else ""
-        megakey = calc_megakey(fileset['rom']) if not detection else ""
+        megakey = calc_megakey(fileset) if detection else ""
+        print(key, megakey)
         log_text = f"size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'."
 
         if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn):
