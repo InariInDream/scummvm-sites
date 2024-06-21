@@ -101,10 +101,11 @@ def fileset():
         <h3>Fileset details</h3>
         <table>
         """
+            html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Merge</button></td>"
 
             cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
             result = cursor.fetchone()
-
+            print(result)
             html += "<h3>Fileset details</h3>"
             html += "<table>\n"
             if result['game']:
@@ -133,10 +134,10 @@ def fileset():
                 if k != 'widetable':
                     html += f"<input type='hidden' name='{k}' value='{v}'>"
             if widetable == 'true':
-                html += "<input class='hidden' type='text' name='widetable' value='false' />"
+                html += "<input class='hidden' type='text' name='widetable' value='true' />"
                 html += "<input type='submit' value='Hide extra checksums' />"
             else:
-                html += "<input class='hidden' type='text' name='widetable' value='true' />"
+                html += "<input class='hidden' type='text' name='widetable' value='false' />"
                 html += "<input type='submit' value='Expand Table' />"
             html += "</form>"
 
@@ -147,15 +148,21 @@ def fileset():
             result = cursor.fetchall()
 
             if widetable == 'true':
+                file_ids = [file['id'] for file in result]
+                cursor.execute(f"SELECT file, checksum, checksize, checktype FROM filechecksum WHERE file IN ({','.join(map(str, file_ids))})")
+                checksums = cursor.fetchall()
+
+                checksum_dict = {}
+                for checksum in checksums:
+                    if checksum['checksize'] != 0:
+                        key = f"{checksum['checktype']}-{checksum['checksize']}"
+                        if checksum['file'] not in checksum_dict:
+                            checksum_dict[checksum['file']] = {}
+                        checksum_dict[checksum['file']][key] = checksum['checksum']
+
                 for index, file in enumerate(result):
-                    cursor.execute(f"SELECT checksum, checksize, checktype FROM filechecksum WHERE file = {file['id']}")
-                    while True:
-                        spec_checksum = cursor.fetchone()
-                        if spec_checksum is None:
-                            break
-                        if spec_checksum['checksize'] == 0:
-                            continue
-                        result[index][f"{spec_checksum['checktype']}-{spec_checksum['checksize']}"] = spec_checksum['checksum']
+                    if file['id'] in checksum_dict:
+                        result[index].update(checksum_dict[file['id']])
 
             counter = 1
             for row in result:
@@ -169,9 +176,6 @@ def fileset():
                 for key, value in row.items():
                     if key != 'id':
                         html += f"<td>{value}</td>\n"
-                    if key == 'detection':
-                        if value == 1:
-                            html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Merge</button></td>"
                 html += "</tr>\n"
                 counter += 1
             html += "</table>\n"
@@ -200,18 +204,20 @@ def fileset():
             html += "<th>Category</th>\n"
             html += "<th>Description</th>\n"
             html += "<th>Log ID</th>\n"
-            cursor.execute(f"SELECT * FROM history")
+            cursor.execute("SELECT * FROM history")
             history = cursor.fetchall()
-            for history_row in history:
-                cursor.execute(f"SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:{history_row['oldfileset']}%' AND `category` NOT LIKE 'merge%' ORDER BY `timestamp` DESC, id DESC")
-                logs = cursor.fetchall()
-                for log in logs:
-                    html += "<tr>\n"
-                    html += f"<td>{log['timestamp']}</td>\n"
-                    html += f"<td>{log['category']}</td>\n"
-                    html += f"<td>{log['text']}</td>\n"
-                    html += f"<td><a href='logs?id={log['id']}'>{log['id']}</a></td>\n"
-                    html += "</tr>\n"
+
+            oldfilesets = [history_row['oldfileset'] for history_row in history]
+            cursor.execute(f"""SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:%' AND `category` NOT LIKE 'merge%' AND `text` REGEXP 'Fileset:({"|".join(map(str, oldfilesets))})' ORDER BY `timestamp` DESC, id DESC""")
+            logs = cursor.fetchall()
+
+            for log in logs:
+                html += "<tr>\n"
+                html += f"<td>{log['timestamp']}</td>\n"
+                html += f"<td>{log['category']}</td>\n"
+                html += f"<td>{log['text']}</td>\n"
+                html += f"<td><a href='logs?id={log['id']}'>{log['id']}</a></td>\n"
+                html += "</tr>\n"
             html += "</table>\n"
             return render_template_string(html)
     finally:
@@ -312,11 +318,11 @@ def confirm_merge(id):
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f"""SELECT * FROM fileset JOIN game ON game.id = fileset.id WHERE fileset.id = {id}
+            cursor.execute(f"""SELECT * FROM fileset WHERE fileset.id = {id}
             """)
             source_fileset = cursor.fetchone()
-
-            cursor.execute(f"""SELECT * FROM fileset JOIN game ON game.id = fileset.id WHERE fileset.id = {target_id}
+            print(source_fileset)
+            cursor.execute(f"""SELECT * FROM fileset WHERE fileset.id = {target_id}
                             
             """)
             target_fileset = cursor.fetchone()
@@ -333,9 +339,7 @@ def confirm_merge(id):
             <tr><th>Field</th><th>Source Fileset</th><th>Target Fileset</th></tr>
             """
             for column in source_fileset.keys():
-                print(column)
-                if column != 'id':
-                    html += f"<tr><td>{column}</td><td>{source_fileset[column]}</td><td>{target_fileset[column]}</td></tr>"
+                html += f"<tr><td>{column}</td><td>{source_fileset[column]}</td><td>{target_fileset[column]}</td></tr>"
 
             html += """
             </table>
