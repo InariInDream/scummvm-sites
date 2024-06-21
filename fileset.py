@@ -5,6 +5,7 @@ import re
 import os
 from user_fileset_functions import user_calc_key, file_json_to_array, user_insert_queue, user_insert_fileset, match_and_merge_user_filesets
 from pagination import create_page
+import difflib
 
 app = Flask(__name__)
 
@@ -360,6 +361,20 @@ def confirm_merge(id):
             """)
             target_fileset = cursor.fetchone()
 
+            def highlight_differences(source, target):
+                diff = difflib.ndiff(source, target)
+                source_highlighted = ""
+                target_highlighted = ""
+                for d in diff:
+                    if d.startswith('-'):
+                        source_highlighted += f"<span style='color: green;'>{d[2:]}</span>"
+                    elif d.startswith('+'):
+                        target_highlighted += f"<span style='color: red;'>{d[2:]}</span>"
+                    elif d.startswith(' '):
+                        source_highlighted += d[2:]
+                        target_highlighted += d[2:]
+                return source_highlighted, target_highlighted
+
             html = """
             <!DOCTYPE html>
             <html>
@@ -368,11 +383,17 @@ def confirm_merge(id):
             </head>
             <body>
             <h2>Confirm Merge</h2>
-            <table>
+            <table border="1">
             <tr><th>Field</th><th>Source Fileset</th><th>Target Fileset</th></tr>
             """
             for column in source_fileset.keys():
-                html += f"<tr><td>{column}</td><td>{source_fileset[column]}</td><td>{target_fileset[column]}</td></tr>"
+                source_value = str(source_fileset[column])
+                target_value = str(target_fileset[column])
+                if source_value != target_value:
+                    source_highlighted, target_highlighted = highlight_differences(source_value, target_value)
+                    html += f"<tr><td>{column}</td><td>{source_highlighted}</td><td>{target_highlighted}</td></tr>"
+                else:
+                    html += f"<tr><td>{column}</td><td>{source_value}</td><td>{target_value}</td></tr>"
 
             html += """
             </table>
