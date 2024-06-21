@@ -318,12 +318,45 @@ def confirm_merge(id):
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f"""SELECT * FROM fileset WHERE fileset.id = {id}
+            cursor.execute(f"""
+                SELECT 
+                    fs.*, 
+                    g.name AS game_name, 
+                    g.engine AS game_engine, 
+                    g.platform AS game_platform,
+                    g.language AS game_language,
+                    f.name AS file_name, 
+                    f.size AS file_size, 
+                    f.checksum AS file_checksum 
+                FROM 
+                    fileset fs
+                LEFT JOIN 
+                    game g ON fs.game = g.id
+                LEFT JOIN 
+                    file f ON fs.id = f.fileset
+                WHERE 
+                    fs.id = {id}
             """)
             source_fileset = cursor.fetchone()
             print(source_fileset)
-            cursor.execute(f"""SELECT * FROM fileset WHERE fileset.id = {target_id}
-                            
+            cursor.execute(f"""
+                SELECT 
+                    fs.*, 
+                    g.name AS game_name, 
+                    g.engine AS game_engine, 
+                    g.platform AS game_platform,
+                    g.language AS game_language,
+                    f.name AS file_name, 
+                    f.size AS file_size, 
+                    f.checksum AS file_checksum 
+                FROM 
+                    fileset fs
+                LEFT JOIN 
+                    game g ON fs.game = g.id
+                LEFT JOIN 
+                    file f ON fs.id = f.fileset
+                WHERE 
+                    fs.id = {target_id}
             """)
             target_fileset = cursor.fetchone()
 
