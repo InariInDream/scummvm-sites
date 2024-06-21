@@ -77,10 +77,10 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
 
     # Check if key/megakey already exists, if so, skip insertion (no quotes on purpose)
     with conn.cursor() as cursor:
-        if not detection:
-            cursor.execute(f"SELECT id FROM fileset WHERE `key` = {key}")
-        else:
+        if detection:
             cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
+        else:
+            cursor.execute(f"SELECT id FROM fileset WHERE `key` = {key}")
 
         existing_entry = cursor.fetchone()
 
@@ -88,22 +88,14 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         existing_entry = existing_entry['id']
         with conn.cursor() as cursor:
             cursor.execute(f"SET @fileset_last = {existing_entry}")
+            cursor.execute(f"UPDATE fileset SET `timestamp` = FROM_UNIXTIME(@fileset_time_last) WHERE id = {existing_entry}")
+            cursor.execute(f"UPDATE fileset SET status = 'detection' WHERE id = {existing_entry} AND status = 'obsolete'")
 
-        category_text = f"Uploaded from {src}"
-        log_text = f"Duplicate of Fileset:{existing_entry}, {log_text}"
-        if src == 'user':
-            log_text = f"Duplicate of Fileset:{existing_entry}, from user IP {ip}, {log_text}"
-
+        category_text = f"Updated Fileset:{existing_entry}"
+        log_text = f"Updated Fileset:{existing_entry}, {log_text}"
         user = f'cli:{getpass.getuser()}'
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
-        if not detection:
-            return False
-
-        with conn.cursor() as cursor:
-            cursor.execute(f"UPDATE fileset SET `timestamp` = FROM_UNIXTIME(@fileset_time_last) WHERE id = {existing_entry}")
-            cursor.execute(f"UPDATE fileset SET status = 'detection' WHERE id = {existing_entry} AND status = 'obsolete'")
-            cursor.execute("DELETE FROM game WHERE id = @game_last")
         return False
 
     # $game and $key should not be parsed as a mysql string, hence no quotes
@@ -261,7 +253,7 @@ def db_insert(data_arr):
         key = calc_key(fileset) if detection else ""
         megakey = calc_megakey(fileset) if detection else ""
         print(key, megakey)
-        log_text = f"size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'."
+        log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}."
 
         if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn):
             for file in fileset["rom"]:
@@ -278,7 +270,7 @@ def db_insert(data_arr):
         cur.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
         fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
         category_text = f"Uploaded from {src}"
-        log_text = f"Completed loading DAT file, filename '{filepath}', size {os.path.getsize(filepath)}, author '{author}', version {version}. State '{status}'. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
+        log_text = f"Completed loading DAT file, filename {filepath}, size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
     except Exception as e:
         print("Inserting failed:", e)
     else:
