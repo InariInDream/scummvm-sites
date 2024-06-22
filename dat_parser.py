@@ -2,6 +2,7 @@ import re
 import os
 import sys
 from db_functions import db_insert, populate_matching_games
+import argparse
 
 def remove_quotes(string):
     # Remove quotes from value if they are present
@@ -104,17 +105,21 @@ def parse_dat(dat_filepath):
     # print(header, game_data, resources)
     return header, game_data, resources, dat_filepath
 
-# Process command line args
-if len(sys.argv) == 1:
-    print("Usage: python dat_parser.py [--upload <filepaths>...] [--match]")
-    sys.exit(1)
+def main():
+    parser = argparse.ArgumentParser(description="Process DAT files and interact with the database.")
+    parser.add_argument('--upload', nargs='+', help='Upload DAT file(s) to the database')
+    parser.add_argument('--match', action='store_true', help='Populate matching games in the database')
+    parser.add_argument('--user', help='Username for database')
+    parser.add_argument('-r', help="Recurse through directories", action='store_true')
 
-if "--upload" in sys.argv:
-    index = sys.argv.index("--upload")
-    for filepath in sys.argv[index + 1:]:
-        if filepath == "--match":
-            continue
-        db_insert(parse_dat(filepath))
+    args = parser.parse_args()
 
-if "--match" in sys.argv:
-    populate_matching_games()
+    if args.upload:
+        for filepath in args.upload:
+            db_insert(parse_dat(filepath))
+
+    if args.match:
+        populate_matching_games()
+
+if __name__ == "__main__":
+    main()
