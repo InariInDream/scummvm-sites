@@ -6,6 +6,7 @@ import os
 from user_fileset_functions import user_calc_key, file_json_to_array, user_insert_queue, user_insert_fileset, match_and_merge_user_filesets
 from pagination import create_page
 import difflib
+from pymysql.converters import escape_string
 
 app = Flask(__name__)
 
@@ -244,10 +245,19 @@ def merge_fileset(id):
         try:
             with connection.cursor() as cursor:
                 query = f"""
-                SELECT fileset.id, game.id AS game_id, platform, language, game.name
-                FROM fileset
-                JOIN game ON game.id = fileset.id
-                WHERE game.name LIKE '%{search_query}%' OR platform LIKE '%{search_query}%' OR language LIKE '%{search_query}%'
+                SELECT 
+                    fs.*, 
+                    g.name AS game_name, 
+                    g.engine AS game_engine, 
+                    g.platform AS game_platform,
+                    g.language AS game_language
+                FROM 
+                    fileset fs
+                LEFT JOIN 
+                    game g ON fs.game = g.id
+                LEFT JOIN 
+                    file f ON fs.id = f.fileset
+                WHERE g.name LIKE '%{search_query}%' OR g.platform LIKE '%{search_query}%' OR g.language LIKE '%{search_query}%'
                 """
                 cursor.execute(query)
                 results = cursor.fetchall()
@@ -271,9 +281,9 @@ def merge_fileset(id):
                     html += f"""
                     <tr>
                         <td>{result['id']}</td>
-                        <td>{result['name']}</td>
-                        <td>{result['platform']}</td>
-                        <td>{result['language']}</td>
+                        <td>{result['game_name']}</td>
+                        <td>{result['game_platform']}</td>
+                        <td>{result['game_language']}</td>
                         <td><a href="/fileset/{id}/merge/confirm?target_id={result['id']}">Select</a></td>
                     </tr>
                     """
@@ -325,16 +335,12 @@ def confirm_merge(id):
                     g.name AS game_name, 
                     g.engine AS game_engine, 
                     g.platform AS game_platform,
-                    g.language AS game_language,
-                    f.name AS file_name, 
-                    f.size AS file_size, 
-                    f.checksum AS file_checksum 
+                    g.language AS game_language
+                    (SELECT COUNT(*) FROM file WHERE fileset = fs.id) AS file_count
                 FROM 
                     fileset fs
                 LEFT JOIN 
                     game g ON fs.game = g.id
-                LEFT JOIN 
-                    file f ON fs.id = f.fileset
                 WHERE 
                     fs.id = {id}
             """)
@@ -346,16 +352,12 @@ def confirm_merge(id):
                     g.name AS game_name, 
                     g.engine AS game_engine, 
                     g.platform AS game_platform,
-                    g.language AS game_language,
-                    f.name AS file_name, 
-                    f.size AS file_size, 
-                    f.checksum AS file_checksum 
+                    g.language AS game_language
+                    (SELECT COUNT(*) FROM file WHERE fileset = fs.id) AS file_count
                 FROM 
                     fileset fs
                 LEFT JOIN 
                     game g ON fs.game = g.id
-                LEFT JOIN 
-                    file f ON fs.id = f.fileset
                 WHERE 
                     fs.id = {target_id}
             """)
@@ -389,6 +391,9 @@ def confirm_merge(id):
             for column in source_fileset.keys():
                 source_value = str(source_fileset[column])
                 target_value = str(target_fileset[column])
+                if column == 'id':
+                    html += f"<tr><td>{column}</td><td><a href='/fileset?id={source_value}'>{source_value}</a></td><td><a href='/fileset?id={source_value}'>{target_value}</a></td></tr>"
+                    continue
                 if source_value != target_value:
                     source_highlighted, target_highlighted = highlight_differences(source_value, target_value)
                     html += f"<tr><td>{column}</td><td>{source_highlighted}</td><td>{target_highlighted}</td></tr>"
@@ -445,10 +450,34 @@ def execute_merge(id):
             WHERE id = {target_id}
             """)
                 
+            cursor.execute(f"DELETE FROM file WHERE fileset = {target_id}")
+
+            cursor.execute(f"SELECT * FROM file WHERE fileset = {source_id}")
+            source_files = cursor.fetchall()
+
+            for file in source_files:
+                cursor.execute(f"""
+                INSERT INTO file (name, size, checksum, fileset, detection)
+                VALUES ('{escape_string(file['name'])}', '{file['size']}', '{file['checksum']}', {target_id}, {file['detection']})
+                """)
+
+                cursor.execute("SELECT LAST_INSERT_ID() as file_id")
+                new_file_id = cursor.fetchone()['file_id']
+                
+                cursor.execute(f"SELECT * FROM filechecksum WHERE file = {file['id']}")
+                file_checksums = cursor.fetchall()
+
+                for checksum in file_checksums:
+                    cursor.execute(f"""
+                    INSERT INTO filechecksum (file, checksize, checktype, checksum)
+                    VALUES ({new_file_id}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
+                    """)
+
             cursor.execute(f"""
             INSERT INTO history (`timestamp`, fileset, oldfileset, log)
-            VALUES (NOW(), {target_id}, {source_id}, {1})
+            VALUES (NOW(), {target_id}, {source_id}, 1)
             """)
+
 
             connection.commit()
 
