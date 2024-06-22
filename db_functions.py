@@ -77,10 +77,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
 
     # Check if key/megakey already exists, if so, skip insertion (no quotes on purpose)
     with conn.cursor() as cursor:
-        if detection:
-            cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
-        else:
-            cursor.execute(f"SELECT id FROM fileset WHERE `key` = {key}")
+        cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
 
         existing_entry = cursor.fetchone()
 
@@ -88,6 +85,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         existing_entry = existing_entry['id']
         with conn.cursor() as cursor:
             cursor.execute(f"SET @fileset_last = {existing_entry}")
+            cursor.execute(f"DELETE FROM file WHERE fileset = {existing_entry}")
             cursor.execute(f"UPDATE fileset SET `timestamp` = FROM_UNIXTIME(@fileset_time_last) WHERE id = {existing_entry}")
             cursor.execute(f"UPDATE fileset SET status = 'detection' WHERE id = {existing_entry} AND status = 'obsolete'")
 
@@ -96,7 +94,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         user = f'cli:{getpass.getuser()}'
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
-        return False
+        return True
 
     # $game and $key should not be parsed as a mysql string, hence no quotes
     query = f"INSERT INTO fileset (game, status, src, `key`, megakey, `timestamp`) VALUES ({game}, '{status}', '{src}', {key}, {megakey}, FROM_UNIXTIME(@fileset_time_last))"
@@ -194,7 +192,8 @@ def calc_megakey(fileset):
     key_string = f":{fileset['platform']}:{fileset['language']}"
     for file in fileset['rom']:
         for key, value in file.items():
-            key_string += ':' + str(value)
+            if key != "name":
+                key_string += ':' + str(value)
 
     key_string = key_string.strip(':')
     return hashlib.md5(key_string.encode()).hexdigest()
@@ -252,7 +251,6 @@ def db_insert(data_arr):
 
         key = calc_key(fileset) if detection else ""
         megakey = calc_megakey(fileset) if detection else ""
-        print(key, megakey)
         log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}."
 
         if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn):
