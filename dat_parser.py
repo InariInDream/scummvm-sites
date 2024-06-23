@@ -116,7 +116,7 @@ def main():
 
     if args.upload:
         for filepath in args.upload:
-            db_insert(parse_dat(filepath))
+            db_insert(parse_dat(filepath), args.user)
 
     if args.match:
         populate_matching_games()

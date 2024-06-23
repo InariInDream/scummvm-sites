@@ -65,7 +65,7 @@ def insert_game(engine_name, engineid, title, gameid, extra, platform, lang, con
         cursor.execute(f"INSERT INTO game (name, engine, gameid, extra, platform, language) VALUES ('{escape_string(title)}', @engine_last, '{gameid}', '{escape_string(extra)}', '{platform}', '{lang}')")
         cursor.execute("SET @game_last = LAST_INSERT_ID()")
 
-def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip=''):
+def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip='', username=None):
     status = "detection" if detection else src
     game = "NULL"
     key = "NULL" if key == "" else f"'{key}'"
@@ -91,7 +91,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
 
         category_text = f"Updated Fileset:{existing_entry}"
         log_text = f"Updated Fileset:{existing_entry}, {log_text}"
-        user = f'cli:{getpass.getuser()}'
+        user = f'cli:{getpass.getuser()}' if username is None else username
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
         return True
@@ -111,7 +111,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
     if src == 'user':
         log_text = f"Created Fileset:{fileset_last}, from user IP {ip}, {log_text}"
 
-    user = f'cli:{getpass.getuser()}'
+    user = f'cli:{getpass.getuser()}' if username is None else username
     create_log(escape_string(category_text), user, escape_string(log_text), conn)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
@@ -198,7 +198,7 @@ def calc_megakey(fileset):
     key_string = key_string.strip(':')
     return hashlib.md5(key_string.encode()).hexdigest()
 
-def db_insert(data_arr):
+def db_insert(data_arr, username=None):
     header = data_arr[0]
     game_data = data_arr[1]
     resources = data_arr[2]
@@ -231,7 +231,7 @@ def db_insert(data_arr):
     category_text = f"Uploaded from {src}"
     log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}. Transaction: {transaction_id}"
 
-    user = f'cli:{getpass.getuser()}'
+    user = f'cli:{getpass.getuser()}' if username is None else username
     create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
     for fileset in game_data:
@@ -253,7 +253,7 @@ def db_insert(data_arr):
         megakey = calc_megakey(fileset) if detection else ""
         log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}."
 
-        if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn):
+        if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=username):
             for file in fileset["rom"]:
                 insert_file(file, detection, src, conn)
                 for key, value in file.items():
@@ -272,7 +272,7 @@ def db_insert(data_arr):
     except Exception as e:
         print("Inserting failed:", e)
     else:
-        user = f'cli:{getpass.getuser()}'
+        user = f'cli:{getpass.getuser()}' if username is None else username
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
 def compare_filesets(id1, id2, conn):
