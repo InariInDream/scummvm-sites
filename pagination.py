@@ -152,27 +152,6 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
                         # Filter textbox
                         filter_value = request.args.get(key, "")
 
-                        html += f"<td class='filter'><input type='text' class='filter' placeholder='{key}' name='{key}' value='{filter_value}'/></td>\n"
-                    html += "</tr>"
-                    html += "<tr class='filter'><td></td><td class='filter'><input type='submit' value='Submit'></td></tr>"
-
-                html += "<th></th>\n"  # Numbering column
-                for key in row.keys():
-                    if key == 'fileset':
-                        continue
-
-                    # Preserve GET variables
-                    vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'sort'])
-                    if request.args.get('sort', '') == key:
-                        vars += f"&sort={key}-desc"
-                    else:
-                        vars += f"&sort={key}"
-
-                    if f"&sort={key}" not in vars:
-                        html += f"<th><a href='{filename}?{vars}&sort={key}'>{key}</th>\n"
-                    else:
-                        html += f"<th><a href='{filename}?{vars}'>{key}</th>\n"
-
             if filename in ['games_list', 'user_games_list']:
                 html += f"<tr class='games_list' onclick='hyperlink(\"fileset?id={row['fileset']}\")'>\n"
             else:
