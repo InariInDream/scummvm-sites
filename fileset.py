@@ -136,10 +136,10 @@ def fileset():
                 if k != 'widetable':
                     html += f"<input type='hidden' name='{k}' value='{v}'>"
             if widetable == 'true':
-                html += "<input class='hidden' type='text' name='widetable' value='true' />"
+                html += "<input class='hidden' type='text' name='widetable' value='false' />"
                 html += "<input type='submit' value='Hide extra checksums' />"
             else:
-                html += "<input class='hidden' type='text' name='widetable' value='false' />"
+                html += "<input class='hidden' type='text' name='widetable' value='true' />"
                 html += "<input type='submit' value='Expand Table' />"
             html += "</form>"
 
@@ -250,13 +250,12 @@ def merge_fileset(id):
                     g.name AS game_name, 
                     g.engine AS game_engine, 
                     g.platform AS game_platform,
-                    g.language AS game_language
+                    g.language AS game_language,
+                    g.extra AS extra
                 FROM 
                     fileset fs
                 LEFT JOIN 
                     game g ON fs.game = g.id
-                LEFT JOIN 
-                    file f ON fs.id = f.fileset
                 WHERE g.name LIKE '%{search_query}%' OR g.platform LIKE '%{search_query}%' OR g.language LIKE '%{search_query}%'
                 """
                 cursor.execute(query)
@@ -275,7 +274,7 @@ def merge_fileset(id):
                     <input type="submit" value="Search">
                 </form>
                 <table>
-                <tr><th>ID</th><th>Game Name</th><th>Platform</th><th>Language</th><th>Action</th></tr>
+                <tr><th>ID</th><th>Game Name</th><th>Platform</th><th>Language</th><th>Extra</th><th>Action</th></tr>
                 """
                 for result in results:
                     html += f"""
@@ -284,6 +283,7 @@ def merge_fileset(id):
                         <td>{result['game_name']}</td>
                         <td>{result['game_platform']}</td>
                         <td>{result['game_language']}</td>
+                        <td>{result['extra']}</td>
                         <td><a href="/fileset/{id}/merge/confirm?target_id={result['id']}">Select</a></td>
                     </tr>
                     """
@@ -335,7 +335,7 @@ def confirm_merge(id):
                     g.name AS game_name, 
                     g.engine AS game_engine, 
                     g.platform AS game_platform,
-                    g.language AS game_language
+                    g.language AS game_language,
                     (SELECT COUNT(*) FROM file WHERE fileset = fs.id) AS file_count
                 FROM 
                     fileset fs
@@ -352,7 +352,7 @@ def confirm_merge(id):
                     g.name AS game_name, 
                     g.engine AS game_engine, 
                     g.platform AS game_platform,
-                    g.language AS game_language
+                    g.language AS game_language,
                     (SELECT COUNT(*) FROM file WHERE fileset = fs.id) AS file_count
                 FROM 
                     fileset fs
