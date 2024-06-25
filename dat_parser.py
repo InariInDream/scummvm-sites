@@ -17,8 +17,13 @@ def map_checksum_data(content_string):
     rom_props = re.findall(r'(\w+)\s+"([^"]*)"\s+size\s+(\d+)((?:\s+md5(?:-\w+)?(?:-\w+)?\s+[a-f0-9]+)*)', content_string)
 
     for prop in rom_props:
-        key, name, size, md5 = prop
-        item = {'name': name, 'size': int(size), 'md5-5000': md5}
+        key, name, size, md5s_str = prop
+        item = {'name': name, 'size': int(size)}
+
+        md5s = re.findall(r'(md5(?:-\w+)?(?:-\w+)?)\s+([a-f0-9]+)', md5s_str)
+        for md5_key, md5_value in md5s:
+            item[md5_key] = md5_value
+        
         arr.append(item)
 
     return arr
