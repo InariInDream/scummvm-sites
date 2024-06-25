@@ -14,7 +14,7 @@ def remove_quotes(string):
 def map_checksum_data(content_string):
     arr = []
     
-    rom_props = re.findall(r'(\w+)\s+"([^"]*)"\s+size\s+(\d+)\s+md5-5000\s+([a-f0-9]+)', content_string)
+    rom_props = re.findall(r'(\w+)\s+"([^"]*)"\s+size\s+(\d+)((?:\s+md5(?:-\w+)?(?:-\w+)?\s+[a-f0-9]+)*)', content_string)
 
     for prop in rom_props:
         key, name, size, md5 = prop
