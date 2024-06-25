@@ -402,7 +402,7 @@ def confirm_merge(id):
                 source_value = str(source_fileset[column])
                 target_value = str(target_fileset[column])
                 if column == 'id':
-                    html += f"<tr><td>{column}</td><td><a href='/fileset?id={source_value}'>{source_value}</a></td><td><a href='/fileset?id={source_value}'>{target_value}</a></td></tr>"
+                    html += f"<tr><td>{column}</td><td><a href='/fileset?id={source_value}'>{source_value}</a></td><td><a href='/fileset?id={target_value}'>{target_value}</a></td></tr>"
                     continue
                 if source_value != target_value:
                     source_highlighted, target_highlighted = highlight_differences(source_value, target_value)
@@ -450,44 +450,97 @@ def execute_merge(id):
             cursor.execute(f"SELECT * FROM fileset WHERE id = {source_id}")
             source_fileset = cursor.fetchone()
 
-            cursor.execute(f"""
-            UPDATE fileset SET
-                game = '{source_fileset['game']}',
-                status = '{source_fileset['status']}',
-                `key` = '{source_fileset['key']}',
-                megakey = '{source_fileset['megakey']}',
-                `timestamp` = '{source_fileset['timestamp']}'
-            WHERE id = {target_id}
-            """)
-                
-            cursor.execute(f"DELETE FROM file WHERE fileset = {target_id}")
-
-            cursor.execute(f"SELECT * FROM file WHERE fileset = {source_id}")
-            source_files = cursor.fetchall()
-
-            for file in source_files:
+            if source_fileset['src'] == 'detection':
                 cursor.execute(f"""
-                INSERT INTO file (name, size, checksum, fileset, detection)
-                VALUES ('{escape_string(file['name'])}', '{file['size']}', '{file['checksum']}', {target_id}, {file['detection']})
+                UPDATE fileset SET
+                    game = '{source_fileset['game']}',
+                    status = '{source_fileset['status']}',
+                    `key` = '{source_fileset['key']}',
+                    megakey = '{source_fileset['megakey']}',
+                    `timestamp` = '{source_fileset['timestamp']}'
+                WHERE id = {target_id}
                 """)
-
-                cursor.execute("SELECT LAST_INSERT_ID() as file_id")
-                new_file_id = cursor.fetchone()['file_id']
                 
-                cursor.execute(f"SELECT * FROM filechecksum WHERE file = {file['id']}")
-                file_checksums = cursor.fetchall()
+                cursor.execute(f"DELETE FROM file WHERE fileset = {target_id}")
 
-                for checksum in file_checksums:
+                cursor.execute(f"SELECT * FROM file WHERE fileset = {source_id}")
+                source_files = cursor.fetchall()
+
+                for file in source_files:
                     cursor.execute(f"""
-                    INSERT INTO filechecksum (file, checksize, checktype, checksum)
-                    VALUES ({new_file_id}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
+                    INSERT INTO file (name, size, checksum, fileset, detection)
+                    VALUES ('{escape_string(file['name']).lower()}', '{file['size']}', '{file['checksum']}', {target_id}, {file['detection']})
                     """)
 
-            cursor.execute(f"""
-            INSERT INTO history (`timestamp`, fileset, oldfileset, log)
-            VALUES (NOW(), {target_id}, {source_id}, 1)
-            """)
+                    cursor.execute("SELECT LAST_INSERT_ID() as file_id")
+                    new_file_id = cursor.fetchone()['file_id']
+                    
+                    cursor.execute(f"SELECT * FROM filechecksum WHERE file = {file['id']}")
+                    file_checksums = cursor.fetchall()
 
+                    for checksum in file_checksums:
+                        cursor.execute(f"""
+                        INSERT INTO filechecksum (file, checksize, checktype, checksum)
+                        VALUES ({new_file_id}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
+                        """)
+
+            elif source_fileset['src'] == 'scan':
+                cursor.execute(f"SELECT * FROM file WHERE fileset = {source_id}")
+                source_files = cursor.fetchall()
+
+                for file in source_files:
+                    filename = escape_string(file['name']).lower()
+                    cursor.execute(f"""
+                    SELECT file.id, file.detection
+                    FROM file
+                    JOIN filechecksum ON file.id = filechecksum.file
+                    WHERE filechecksum.checksum = '{file['checksum']}' AND file.fileset = {target_id}
+                    """)
+                    existing_file = cursor.fetchone()
+
+                    if existing_file:
+                        cursor.execute(f"""
+                        UPDATE file SET
+                            name = '{filename}',
+                            size = '{file['size']}'
+                        WHERE id = {existing_file['id']}
+                        """)
+
+                        cursor.execute(f"SELECT * FROM filechecksum WHERE file = {file['id']}")
+                        file_checksums = cursor.fetchall()
+
+                        for checksum in file_checksums:
+                            cursor.execute(f"""
+                            INSERT INTO filechecksum (file, checksize, checktype, checksum)
+                            VALUES ({existing_file['id']}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
+                            ON DUPLICATE KEY UPDATE
+                                checksize = VALUES(checksize),
+                                checktype = VALUES(checktype),
+                                checksum = VALUES(checksum)
+                            """)
+
+                    else:
+                        cursor.execute(f"""
+                        INSERT INTO file (name, size, checksum, fileset, detection)
+                        VALUES ('{filename}', '{file['size']}', '{file['checksum']}', {target_id}, {file['detection']})
+                        """)
+
+                        cursor.execute("SELECT LAST_INSERT_ID() as file_id")
+                        new_file_id = cursor.fetchone()['file_id']
+                        
+                        cursor.execute(f"SELECT * FROM filechecksum WHERE file = {file['id']}")
+                        file_checksums = cursor.fetchall()
+
+                        for checksum in file_checksums:
+                            cursor.execute(f"""
+                            INSERT INTO filechecksum (file, checksize, checktype, checksum)
+                            VALUES ({new_file_id}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
+                            """)
+
+            cursor.execute(f"""
+            INSERT INTO history (`timestamp`, fileset, oldfileset)
+            VALUES (NOW(), {target_id}, {source_id})
+            """)
 
             connection.commit()
 
