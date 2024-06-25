@@ -149,6 +149,9 @@ def fileset():
             cursor.execute(f"SELECT file.id, name, size, checksum, detection FROM file WHERE fileset = {id}")
             result = cursor.fetchall()
 
+            all_columns = list(result[0].keys())
+            temp_set = set()
+
             if widetable == 'true':
                 file_ids = [file['id'] for file in result]
                 cursor.execute(f"SELECT file, checksum, checksize, checktype FROM filechecksum WHERE file IN ({','.join(map(str, file_ids))})")
@@ -161,22 +164,29 @@ def fileset():
                         if checksum['file'] not in checksum_dict:
                             checksum_dict[checksum['file']] = {}
                         checksum_dict[checksum['file']][key] = checksum['checksum']
+                        temp_set.add(key)
 
                 for index, file in enumerate(result):
                     if file['id'] in checksum_dict:
                         result[index].update(checksum_dict[file['id']])
 
+            all_columns.extend(list(temp_set))
             counter = 1
+            # Generate table header
+            html += "<tr>\n"
+            html += "<th/>"  # Numbering column
+            for column in all_columns:
+                if column != 'id':
+                    html += f"<th>{column}</th>\n"
+            html += "</tr>\n"
+
+            # Generate table rows
             for row in result:
-                if counter == 1:
-                    html += "<th/>\n" # Numbering column
-                    for key in row.keys():
-                        if key != 'id':
-                            html += f"<th>{key}</th>\n"
                 html += "<tr>\n"
                 html += f"<td>{counter}.</td>\n"
-                for key, value in row.items():
-                    if key != 'id':
+                for column in all_columns:
+                    if column != 'id':
+                        value = row.get(column, '')
                         html += f"<td>{value}</td>\n"
                 html += "</tr>\n"
                 counter += 1
