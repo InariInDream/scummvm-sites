@@ -76,10 +76,16 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         game = "@game_last"
 
     # Check if key/megakey already exists, if so, skip insertion (no quotes on purpose)
-    with conn.cursor() as cursor:
-        cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
+    if detection:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT id FROM fileset WHERE megakey = {megakey}")
 
-        existing_entry = cursor.fetchone()
+            existing_entry = cursor.fetchone()
+    else:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT id FROM fileset WHERE `key` = {key}")
+
+            existing_entry = cursor.fetchone()
 
     if existing_entry is not None:
         existing_entry = existing_entry['id']
@@ -249,7 +255,7 @@ def db_insert(data_arr, username=None):
             if 'romof' in fileset and fileset['romof'] in resources:
                 fileset["rom"] = fileset["rom"] + resources[fileset["romof"]]["rom"]
 
-        key = calc_key(fileset) if detection else ""
+        key = calc_key(fileset) if not detection else ""
         megakey = calc_megakey(fileset) if detection else ""
         log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}."
 
