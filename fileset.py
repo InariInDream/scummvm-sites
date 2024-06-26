@@ -100,7 +100,6 @@ def fileset():
         </head>
         <body>
         <h2><u>Fileset: {id}</u></h2>
-        <h3>Fileset details</h3>
         <table>
         """
             html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Merge</button></td>"
