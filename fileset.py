@@ -485,6 +485,13 @@ def execute_merge(id):
                         """)
 
             elif source_fileset['src'] == 'scan':
+                cursor.execute(f"""
+                UPDATE fileset SET
+                    status = '{source_fileset['status']}',
+                    `key` = '{source_fileset['key']}',
+                    `timestamp` = '{source_fileset['timestamp']}'
+                WHERE id = {target_id}
+                """)
                 cursor.execute(f"SELECT * FROM file WHERE fileset = {source_id}")
                 source_files = cursor.fetchall()
 
