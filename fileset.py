@@ -149,7 +149,7 @@ def fileset():
             cursor.execute(f"SELECT file.id, name, size, checksum, detection FROM file WHERE fileset = {id}")
             result = cursor.fetchall()
 
-            all_columns = list(result[0].keys())
+            all_columns = list(result[0].keys()) if result else []
             temp_set = set()
 
             if widetable == 'true':
