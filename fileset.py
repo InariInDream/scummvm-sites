@@ -428,9 +428,9 @@ def confirm_merge(id):
         connection.close()
 
 @app.route('/fileset/<int:id>/merge/execute', methods=['POST'])
-def execute_merge(id):
-    source_id = request.form['source_id']
-    target_id = request.form['target_id']
+def execute_merge(id, source=None, target=None):
+    source_id = request.form['source_id'] if not source else source
+    target_id = request.form['target_id'] if not target else target
 
     with open('mysql_config.json') as f:
         mysql_cred = json.load(f)
@@ -448,6 +448,8 @@ def execute_merge(id):
         with connection.cursor() as cursor:
             cursor.execute(f"SELECT * FROM fileset WHERE id = {source_id}")
             source_fileset = cursor.fetchone()
+            cursor.execute(f"SELECT * FROM fileset WHERE id = {target_id}")
+            target_fileset = cursor.fetchone()
 
             if source_fileset['src'] == 'detection':
                 cursor.execute(f"""
@@ -493,55 +495,39 @@ def execute_merge(id):
                 """)
                 cursor.execute(f"SELECT * FROM file WHERE fileset = {source_id}")
                 source_files = cursor.fetchall()
+                
+                cursor.execute(f"SELECT * FROM file WHERE fileset = {target_id}")
+                target_files = cursor.fetchall()
 
-                for file in source_files:
-                    filename = escape_string(file['name']).lower()
-                    cursor.execute(f"""
-                    SELECT file.id, file.detection
-                    FROM file
-                    JOIN filechecksum ON file.id = filechecksum.file
-                    WHERE filechecksum.checksum = '{file['checksum']}' AND file.fileset = {target_id}
-                    """)
-                    existing_file = cursor.fetchone()
+                target_files_dict = {}
+                for target_file in target_files:
+                    cursor.execute(f"SELECT * FROM filechecksum WHERE file = {target_file['id']}")
+                    target_checksums = cursor.fetchall()
+                    for checksum in target_checksums:
+                        target_files_dict[checksum['checksum']] = target_file
+                
+                for source_file in source_files:
+                    cursor.execute(f"SELECT * FROM filechecksum WHERE file = {source_file['id']}")
+                    source_checksums = cursor.fetchall()
+                    file_exists = False
+                    for checksum in source_checksums:
+                        print(checksum['checksum'])
+                        if checksum['checksum'] in target_files_dict.keys():
+                            target_file = target_files_dict[checksum['checksum']]
+                            source_file['detection'] = target_file['detection']
 
-                    if existing_file:
-                        cursor.execute(f"""
-                        UPDATE file SET
-                            name = '{filename}',
-                            size = '{file['size']}'
-                        WHERE id = {existing_file['id']}
-                        """)
+                            cursor.execute(f"DELETE FROM file WHERE id = {target_file['id']}")
+                            file_exists = True
+                            break
+                    print(file_exists)
+                    cursor.execute("INSERT INTO file (name, size, checksum, fileset, detection) VALUES (%s, %s, %s, %s, %s)",
+                                   (source_file['name'], source_file['size'], source_file['checksum'], target_id, source_file['detection']))
+                    new_file_id = cursor.lastrowid
+                    for checksum in source_checksums:
+                        # TODO: Handle the string
 
-                        cursor.execute(f"SELECT * FROM filechecksum WHERE file = {file['id']}")
-                        file_checksums = cursor.fetchall()
-
-                        for checksum in file_checksums:
-                            cursor.execute(f"""
-                            INSERT INTO filechecksum (file, checksize, checktype, checksum)
-                            VALUES ({existing_file['id']}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
-                            ON DUPLICATE KEY UPDATE
-                                checksize = VALUES(checksize),
-                                checktype = VALUES(checktype),
-                                checksum = VALUES(checksum)
-                            """)
-
-                    else:
-                        cursor.execute(f"""
-                        INSERT INTO file (name, size, checksum, fileset, detection)
-                        VALUES ('{filename}', '{file['size']}', '{file['checksum']}', {target_id}, {file['detection']})
-                        """)
-
-                        cursor.execute("SELECT LAST_INSERT_ID() as file_id")
-                        new_file_id = cursor.fetchone()['file_id']
-                        
-                        cursor.execute(f"SELECT * FROM filechecksum WHERE file = {file['id']}")
-                        file_checksums = cursor.fetchall()
-
-                        for checksum in file_checksums:
-                            cursor.execute(f"""
-                            INSERT INTO filechecksum (file, checksize, checktype, checksum)
-                            VALUES ({new_file_id}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
-                            """)
+                        cursor.execute("INSERT INTO filechecksum (file, checksize, checktype, checksum) VALUES (%s, %s, %s, %s)",
+                                    (new_file_id, checksum['checksize'], f"{checksum['checktype']}-{checksum['checksize']}", checksum['checksum']))
 
             cursor.execute(f"""
             INSERT INTO history (`timestamp`, fileset, oldfileset)
