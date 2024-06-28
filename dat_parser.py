@@ -1,7 +1,7 @@
 import re
 import os
 import sys
-from db_functions import db_insert, populate_matching_games
+from db_functions import db_insert, populate_matching_games, match_fileset
 import argparse
 
 def remove_quotes(string):
@@ -113,7 +113,7 @@ def parse_dat(dat_filepath):
 def main():
     parser = argparse.ArgumentParser(description="Process DAT files and interact with the database.")
     parser.add_argument('--upload', nargs='+', help='Upload DAT file(s) to the database')
-    parser.add_argument('--match', action='store_true', help='Populate matching games in the database')
+    parser.add_argument('--match', nargs='+', help='Populate matching games in the database')
     parser.add_argument('--user', help='Username for database')
     parser.add_argument('-r', help="Recurse through directories", action='store_true')
 
@@ -124,7 +124,8 @@ def main():
             db_insert(parse_dat(filepath), args.user)
 
     if args.match:
-        populate_matching_games()
+        for filepath in args.match:
+            match_fileset(parse_dat(filepath), args.user)
 
 if __name__ == "__main__":
     main()

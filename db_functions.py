@@ -459,3 +459,64 @@ def populate_matching_games():
             conn.commit()
         except:
             print("Updating matched games failed")
+            
+def match_fileset(data_arr, username=None):
+    header = data_arr[0]
+    game_data = data_arr[1]
+    resources = data_arr[2]
+    filepath = data_arr[3]
+
+    try:
+        conn = db_connect()
+    except Exception as e:
+        print(f"Failed to connect to database: {e}")
+        return
+
+    try:
+        author = header["author"]
+        version = header["version"]
+    except KeyError as e:
+        print(f"Missing key in header: {e}")
+        return
+    
+    src = "dat" if author not in ["scan", "scummvm"] else author
+    detection = (src == "scummvm")
+    status = "detection" if detection else src
+    user = f'cli:{getpass.getuser()}' if username is None else username
+    
+    for fileset in game_data:
+        if detection:
+            engine_name = fileset["engine"]
+            engineid = fileset["sourcefile"]
+            gameid = fileset["name"]
+            title = fileset["title"]
+            extra = fileset["extra"]
+            platform = fileset["platform"]
+            lang = fileset["language"]
+
+            insert_game(engine_name, engineid, title, gameid, extra, platform, lang, conn)
+        elif src == "dat":
+            if 'romof' in fileset and fileset['romof'] in resources:
+                fileset["rom"] = fileset["rom"] + resources[fileset["romof"]]["rom"]
+
+        key = calc_key(fileset) if not detection else ""
+        megakey = calc_megakey(fileset) if detection else ""
+        log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}."
+
+        for file in fileset["rom"]:
+            for key, value in file.items():
+                if key not in ["name", "size"]:
+                    md5type = key
+                    checksum = value
+                    query = f"""SELECT DISTINCT fs.id AS fileset_id
+                                FROM fileset fs
+                                JOIN file f ON fs.id = f.fileset
+                                JOIN filechecksum fc ON f.id = fc.file
+                                WHERE fc.checksum = '{checksum}' AND fc.checktype = '{md5type}'
+                                AND fs.status IN ('detection', 'dat', 'scan', 'partialmatch', 'fullmatch')"""
+
+                    with conn.cursor() as cursor:
+                        cursor.execute(query)
+                        records = cursor.fetchall()
+                    # TODO: Implement the rest of the function
+                        
