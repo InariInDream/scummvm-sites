@@ -482,9 +482,16 @@ def match_fileset(data_arr, username=None):
     
     src = "dat" if author not in ["scan", "scummvm"] else author
     detection = (src == "scummvm")
-    status = "detection" if detection else src
+    source_status = "detection" if detection else src
     user = f'cli:{getpass.getuser()}' if username is None else username
-    
+
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT MAX(`transaction`) FROM transactions")
+        transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
+
+    category_text = f"Uploaded from {src}"
+    log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}. Transaction: {transaction_id}"
+
     for fileset in game_data:
         if detection:
             engine_name = fileset["engine"]
@@ -502,7 +509,7 @@ def match_fileset(data_arr, username=None):
 
         key = calc_key(fileset) if not detection else ""
         megakey = calc_megakey(fileset) if detection else ""
-        log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}."
+        log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}."
 
         matched_map = defaultdict(int)
         try:
@@ -535,75 +542,136 @@ def match_fileset(data_arr, username=None):
                         cursor.execute(query)
                         status = cursor.fetchone()['status']
 
-                    if status == 'scan':
                         query = f"SELECT COUNT(file.id) FROM file WHERE fileset = {matched_fileset_id}" 
                         cursor.execute(query)
                         count = cursor.fetchone()['COUNT(file.id)']
+
+                        # if matched fileset's status is detection
+                        if status == 'detection':
+                                
+                            if count == matched_count:
+                        
+                                # full match
+                                cursor.execute(f"""
+                                            UPDATE fileset SET 
+                                                    status = 'fullmatch', 
+                                                    `timestamp` = FROM_UNIXTIME({int(time.time())})
+                                                WHERE id = {matched_fileset_id}""")
+                                cursor.execute(f"SELECT * FROM file WHERE fileset = {matched_fileset_id}")
+                                target_files = cursor.fetchall()
+                                
+                                target_files_dict = {}
+                                for target_file in target_files:
+                                    cursor.execute(f"SELECT * FROM filechecksum WHERE file = {target_file['id']}")
+                                    target_checksums = cursor.fetchall()
+                                    for checksum in target_checksums:
+                                        target_files_dict[checksum['checksum']] = target_file
+                                for file in fileset['rom']:
+                                    file_exists = False
+                                    for key, value in file.items():
+                                        print(key, value)
+                                        if key not in ["name", "size"]:
+                                            scan_md5type = key
+                                            scan_checksum = value
+                                            if scan_checksum in target_files_dict.keys():
+                                                file_exists = True
+                                                cursor.execute(f"DELETE FROM file WHERE id = {target_files_dict[scan_checksum]['id']}")
+                                                break
+                                    print(file_exists)
+                                    cursor.execute(f"INSERT INTO file (name, size, checksum, fileset, detection) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{scan_checksum}', {matched_fileset_id}, {0})")
+                                    # TODO: insert filechecksum
+                                                
+                                # log
+                                category_text = f"Matched from {src}"
+                                log_text = f"Matched game {matched_fileset_id}. State fullmatch."
+                                create_log(escape_string(category_text), user, escape_string(log_text), conn)
                             
-                        if count == matched_count:
-                            # full match
-                            cursor.execute(f"""
-                                           UPDATE fileset SET 
-                                                status = 'fullmatch', 
-                                                `timestamp` = FROM_UNIXTIME({int(time.time())})
-                                            WHERE id = {matched_fileset_id}""")
-                            cursor.execute(f"SELECT * FROM file WHERE fileset = {matched_fileset_id}")
-                            target_files = cursor.fetchall()
+                            else:
+                                # not a full match
+                                if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=username):
+                                    for file in fileset["rom"]:
+                                        insert_file(file, detection, src, conn)
+                                        for key, value in file.items():
+                                            if key not in ["name", "size"]:
+                                                insert_filechecksum(file, key, conn)
+                        elif status == 'full':
+                            # if it's a dup
+                            if len(fileset['rom']) == count:
+                                # TODO: log the dup msg
+                                return
+                        
+                        elif status == 'partial':
+                            # same as 'detection'
+                            if count == matched_count:
+                        
+                                # full match
+                                cursor.execute(f"""
+                                            UPDATE fileset SET 
+                                                    status = 'fullmatch', 
+                                                    `timestamp` = FROM_UNIXTIME({int(time.time())})
+                                                WHERE id = {matched_fileset_id}""")
+                                cursor.execute(f"SELECT * FROM file WHERE fileset = {matched_fileset_id}")
+                                target_files = cursor.fetchall()
+                                
+                                target_files_dict = {}
+                                for target_file in target_files:
+                                    cursor.execute(f"SELECT * FROM filechecksum WHERE file = {target_file['id']}")
+                                    target_checksums = cursor.fetchall()
+                                    for checksum in target_checksums:
+                                        target_files_dict[checksum['checksum']] = target_file
+                                for file in fileset['rom']:
+                                    file_exists = False
+                                    for key, value in file.items():
+                                        print(key, value)
+                                        if key not in ["name", "size"]:
+                                            scan_md5type = key
+                                            scan_checksum = value
+                                            if scan_checksum in target_files_dict.keys():
+                                                file_exists = True
+                                                cursor.execute(f"DELETE FROM file WHERE id = {target_files_dict[scan_checksum]['id']}")
+                                                break
+                                    print(file_exists)
+                                    cursor.execute(f"INSERT INTO file (name, size, checksum, fileset, detection) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{scan_checksum}', {matched_fileset_id}, {0})")
+                                    # TODO: insert filechecksum
+                                                
+                                # log
+                                category_text = f"Matched from {src}"
+                                log_text = f"Matched game {matched_fileset_id}. State fullmatch."
+                                create_log(escape_string(category_text), user, escape_string(log_text), conn)
                             
-                            target_files_dict = {}
-                            for target_file in target_files:
-                                cursor.execute(f"SELECT * FROM filechecksum WHERE file = {target_file['id']}")
-                                target_checksums = cursor.fetchall()
-                                for checksum in target_checksums:
-                                    target_files_dict[checksum['checksum']] = target_file
-                            for file in fileset['rom']:
-                                file_exists = False
-                                for key, value in file.items():
-                                    print(key, value)
-                                    if key not in ["name", "size"]:
-                                        scan_md5type = key
-                                        scan_checksum = value
-                                        if scan_checksum in target_files_dict.keys():
-                                            file_exists = True
-                                            cursor.execute(f"DELETE FROM file WHERE id = {target_files_dict[scan_checksum]['id']}")
-                                            break
-                                print(file_exists)
-                                cursor.execute(f"INSERT INTO file (name, size, checksum, fileset, detection) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{scan_checksum}', {matched_fileset_id}, {0})")
-                                # TODO: insert filechecksum
-                                              
-                            # log
-                            category_text = f"Matched from {src}"
-                            log_text = f"Matched game {matched_fileset_id}. State fullmatch."
-                            # create_log(escape_string(category_text), user, escape_string(log_text), conn)
+                            else:
+                                # not a full match
+                                if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=username):
+                                    for file in fileset["rom"]:
+                                        insert_file(file, detection, src, conn)
+                                        for key, value in file.items():
+                                            if key not in ["name", "size"]:
+                                                insert_filechecksum(file, key, conn)
+
+
+
+                else:
+                    # no match
+                    if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=username):
+                        for file in fileset["rom"]:
+                            insert_file(file, detection, src, conn)
+                            for key, value in file.items():
+                                if key not in ["name", "size"]:
+                                    insert_filechecksum(file, key, conn)
+            if detection:
+                conn.cursor().execute("UPDATE fileset SET status = 'obsolete' WHERE `timestamp` != FROM_UNIXTIME(@fileset_time_last) AND status = 'detection'")
+            cur = conn.cursor()
+            
+            try:
+                cur.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
+                fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
+                category_text = f"Uploaded from {src}"
+                log_text = f"Completed loading DAT file, filename {filepath}, size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
+            except Exception as e:
+                print("Inserting failed:", e)
+            else:
+                user = f'cli:{getpass.getuser()}' if username is None else username
+                create_log(escape_string(category_text), user, escape_string(log_text), conn)            
         finally:
             conn.close()
             
-                        
-            # if matched_list[0][1] == len(fileset["rom"]):
-            #     # full match
-            #     matched_fileset_id = matched_list[0][0]
-            #     # replace all th
-            # query = f"SELECT status FROM fileset WHERE id = {matched_fileset_id}"
-            # with conn.cursor() as cursor:
-            #     cursor.execute(query)
-            #     status = cursor.fetchone()['status']
-            # if status == 'detection':
-            #     # check if the fileset is a full match
-            #     query = f"SELECT file.id FROM file WHERE fileset = {matched_fileset_id}"
-            #     cursor.execute(query)
-            #     reusult = cursor.fetchall()
-                
-            #     file_ids = [file['id'] for file in reusult]
-            #     query = f"SELECT file, checksum, checksize, checktype FROM filechecksum WHERE file IN ({','.join(map(str, file_ids))})"
-            #     cursor.execute(query)
-            #     checksums = cursor.fetchall()
-                
-            #     checksum_dict = {}
-                
-            #     for checksum in checksums:
-            #         if checksum['checksize'] != 0:
-            #             key = f"{checksum['checktype']}-{checksum['checksize']}"
-            #             if checksum['file'] not in checksum_dict:
-            #                 checksum_dict[checksum['file']] = {}
-            #             checksum_dict[checksum['file']][key] = checksum['checksum']
-                        
