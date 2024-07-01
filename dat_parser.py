@@ -125,6 +125,7 @@ def main():
     parser.add_argument('--match', nargs='+', help='Populate matching games in the database')
     parser.add_argument('--user', help='Username for database')
     parser.add_argument('-r', help="Recurse through directories", action='store_true')
+    parser.add_argument('--skiplog', help="Skip logging dups", action='store_true')
 
     args = parser.parse_args()
 
