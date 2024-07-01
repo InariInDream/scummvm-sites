@@ -14,18 +14,27 @@ def remove_quotes(string):
 def map_checksum_data(content_string):
     arr = []
     
-    rom_props = re.findall(r'(\w+)\s+"([^"]*)"\s+size\s+(\d+)((?:\s+md5(?:-\w+)?(?:-\w+)?\s+[a-f0-9]+)*)', content_string)
-
-    for prop in rom_props:
-        key, name, size, md5s_str = prop
-        item = {'name': name, 'size': int(size)}
-
-        md5s = re.findall(r'(md5(?:-\w+)?(?:-\w+)?)\s+([a-f0-9]+)', md5s_str)
-        for md5_key, md5_value in md5s:
-            item[md5_key] = md5_value
-        
-        arr.append(item)
-
+    content_string = content_string.strip().strip('()').strip()
+    
+    tokens = re.split(r'\s+(?=(?:[^"]*"[^"]*")*[^"]*$)', content_string)
+    
+    current_rom = {}
+    i = 0
+    while i < len(tokens):
+        if tokens[i] == 'name':
+            current_rom['name'] = tokens[i + 1].strip('"')
+            i += 2
+        elif tokens[i] == 'size':
+            current_rom['size'] = int(tokens[i + 1])
+            i += 2
+        else:
+            checksum_key = tokens[i]
+            checksum_value = tokens[i + 1]
+            current_rom[checksum_key] = checksum_value
+            i += 2
+    
+    arr.append(current_rom)
+    
     return arr
 
 def map_key_values(content_string, arr):
