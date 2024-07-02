@@ -29,7 +29,7 @@ def map_checksum_data(content_string):
             i += 2
         else:
             checksum_key = tokens[i]
-            checksum_value = tokens[i + 1]
+            checksum_value = tokens[i + 1] if len(tokens) >= 6 else "0"
             current_rom[checksum_key] = checksum_value
             i += 2
     
