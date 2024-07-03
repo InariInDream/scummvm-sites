@@ -137,7 +137,9 @@ def insert_file(file, detection, src, conn):
                 checksize, checktype, checksum = get_checksum_props(key, value)
                 break
 
-    query = f"INSERT INTO file (name, size, checksum, fileset, detection) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection})"
+    if not detection:
+        checktype = "None"
+    query = f"INSERT INTO file (name, size, checksum, fileset, detection, detection_type) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection}, '{checktype}-{checksize}')"
     with conn.cursor() as cursor:
         cursor.execute(query)
 
@@ -464,10 +466,7 @@ def populate_matching_games():
             print("Updating matched games failed")
             
 def match_fileset(data_arr, username=None):
-    header = data_arr[0]
-    game_data = data_arr[1]
-    resources = data_arr[2]
-    filepath = data_arr[3]
+    header, game_data, resources, filepath = data_arr
 
     try:
         conn = db_connect()
@@ -481,7 +480,7 @@ def match_fileset(data_arr, username=None):
     except KeyError as e:
         print(f"Missing key in header: {e}")
         return
-    
+
     src = "dat" if author not in ["scan", "scummvm"] else author
     detection = (src == "scummvm")
     source_status = "detection" if detection else src
@@ -494,67 +493,75 @@ def match_fileset(data_arr, username=None):
 
     category_text = f"Uploaded from {src}"
     log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}. Transaction: {transaction_id}"
-    
+
     user = f'cli:{getpass.getuser()}' if username is None else username
     create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
     for fileset in game_data:
-        if detection:
-            engine_name = fileset["engine"]
-            engineid = fileset["sourcefile"]
-            gameid = fileset["name"]
-            title = fileset["title"]
-            extra = fileset["extra"]
-            platform = fileset["platform"]
-            lang = fileset["language"]
+        process_fileset(fileset, resources, detection, src, conn, transaction_id, filepath, author, version, source_status, user)
+    finalize_fileset_insertion(conn, transaction_id, src, filepath, author, version, source_status, user)
 
-            insert_game(engine_name, engineid, title, gameid, extra, platform, lang, conn)
-        elif src == "dat":
-            if 'romof' in fileset and fileset['romof'] in resources:
-                fileset["rom"] = fileset["rom"] + resources[fileset["romof"]]["rom"]
+def process_fileset(fileset, resources, detection, src, conn, transaction_id, filepath, author, version, source_status, user):
+    if detection:
+        insert_game_data(fileset, conn)
+    elif src == "dat" and 'romof' in fileset and fileset['romof'] in resources:
+        fileset["rom"] += resources[fileset["romof"]]["rom"]
 
-        key = calc_key(fileset) if not detection else ""
-        megakey = calc_megakey(fileset) if detection else ""
-        log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}."
+    key = calc_key(fileset) if not detection else ""
+    megakey = calc_megakey(fileset) if detection else ""
+    log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}."
 
-        matched_map = defaultdict(int)
-        try:
-            with conn.cursor() as cursor:   
-                for file in fileset["rom"]:
-                    for key, value in file.items():
-                        if key not in ["name", "size"]:
-                            checksum = file[key]
-                            checktype = key
-                            checksize, checktype, checksum = get_checksum_props(checktype, checksum)
-                            query = f"""SELECT DISTINCT fs.id AS fileset_id
-                                        FROM fileset fs
-                                        JOIN file f ON fs.id = f.fileset
-                                        JOIN filechecksum fc ON f.id = fc.file
-                                        WHERE fc.checksum = '{checksum}' AND fc.checktype = '{checktype}'
-                                        AND fs.status IN ('detection', 'dat', 'scan', 'partial', 'full', 'obsolete')"""
+    matched_map = find_matching_filesets(fileset, conn)
 
-                            
-                            cursor.execute(query)
-                            records = cursor.fetchall()
-                            if records:
-                                for record in records:
-                                    matched_map[record['fileset_id']] += 1
-                                break
-                
-                matched_list = sorted(matched_map.items(), key=lambda x: x[1], reverse=True)
-                if matched_list:
-                    is_full_matched = False
-                    for matched_fileset_id, matched_count in matched_list:
-                        if is_full_matched:
-                            break
-                        query = f"SELECT status FROM fileset WHERE id = {matched_fileset_id}"
+    if matched_map:
+        handle_matched_filesets(matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
+    else:
+        insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
 
-                        cursor.execute(query)
-                        status = cursor.fetchone()['status']
+def insert_game_data(fileset, conn):
+    engine_name = fileset["engine"]
+    engineid = fileset["sourcefile"]
+    gameid = fileset["name"]
+    title = fileset["title"]
+    extra = fileset["extra"]
+    platform = fileset["platform"]
+    lang = fileset["language"]
+    insert_game(engine_name, engineid, title, gameid, extra, platform, lang, conn)
 
-                        query = f"SELECT COUNT(file.id) FROM file WHERE fileset = {matched_fileset_id}" 
-                        cursor.execute(query)
-                        count = cursor.fetchone()['COUNT(file.id)']
+def find_matching_filesets(fileset, conn):
+    matched_map = defaultdict(int)
+    with conn.cursor() as cursor:
+        for file in fileset["rom"]:
+            for key, value in file.items():
+                if key not in ["name", "size"]:
+                    checksum = file[key]
+                    checktype = key
+                    checksize, checktype, checksum = get_checksum_props(checktype, checksum)
+                    query = f"""SELECT DISTINCT fs.id AS fileset_id
+                                FROM fileset fs
+                                JOIN file f ON fs.id = f.fileset
+                                JOIN filechecksum fc ON f.id = fc.file
+                                WHERE fc.checksum = '{checksum}' AND fc.checktype = '{checktype}'
+                                AND fs.status IN ('detection', 'dat', 'scan', 'partial', 'full', 'obsolete')"""
+                    cursor.execute(query)
+                    records = cursor.fetchall()
+                    if records:
+                        for record in records:
+                            matched_map[record['fileset_id']] += 1
+                        break
+    return matched_map
+
+def handle_matched_filesets(matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user):
+    matched_list = sorted(matched_map.items(), key=lambda x: x[1], reverse=True)
+    is_full_matched = False
+    with conn.cursor() as cursor:
+        for matched_fileset_id, matched_count in matched_list:
+            if is_full_matched:
+                break
+            cursor.execute(f"SELECT status FROM fileset WHERE id = {matched_fileset_id}")
+            status = cursor.fetchone()['status']
+            cursor.execute(f"SELECT COUNT(file.id) FROM file WHERE fileset = {matched_fileset_id}")
+            count = cursor.fetchone()['COUNT(file.id)']
 
             if status in ['detection', 'obsolete'] and count == matched_count:
                 is_full_matched = True
@@ -623,29 +630,16 @@ def insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_
                 if key not in ["name", "size"]:
                     insert_filechecksum(file, key, conn)
 
+def log_matched_fileset(src, fileset_id, state, user, conn):
+    category_text = f"Matched from {src}"
+    log_text = f"Matched Fileset:{fileset_id}. State {state}."
+    create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
-
-                else:
-                    # no match
-                    if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=username):
-                        for file in fileset["rom"]:
-                            insert_file(file, detection, src, conn)
-                            for key, value in file.items():
-                                if key not in ["name", "size"]:
-                                    insert_filechecksum(file, key, conn)
-            if detection:
-                conn.cursor().execute("UPDATE fileset SET status = 'obsolete' WHERE `timestamp` != FROM_UNIXTIME(@fileset_time_last) AND status = 'detection'")
-            cur = conn.cursor()
-            
-            try:
-                cur.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
-                fileset_insertion_count = cur.fetchone()['COUNT(fileset)']
-                category_text = f"Uploaded from {src}"
-                log_text = f"Completed loading DAT file, filename {filepath}, size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
-            except Exception as e:
-                print("Inserting failed:", e)
-            else:
-                user = f'cli:{getpass.getuser()}' if username is None else username
-                create_log(escape_string(category_text), user, escape_string(log_text), conn)            
-        finally:
-            conn.close()
+def finalize_fileset_insertion(conn, transaction_id, src, filepath, author, version, source_status, user):
+    with conn.cursor() as cursor:
+        cursor.execute(f"SELECT COUNT(fileset) from transactions WHERE `transaction` = {transaction_id}")
+        fileset_insertion_count = cursor.fetchone()['COUNT(fileset)']
+        category_text = f"Uploaded from {src}"
+        log_text = f"Completed loading DAT file, filename {filepath}, size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
+        create_log(escape_string(category_text), user, escape_string(log_text), conn)
+    conn.close()

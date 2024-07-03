@@ -148,6 +148,12 @@ indices = {
     "fileset": "CREATE INDEX fileset ON history (fileset)"
 }
 
+try:
+    cursor.execute("ALTER TABLE file ADD COLUMN detection_type VARCHAR(20);")
+except:
+    # if aleady exists, change the length of the column
+    cursor.execute("ALTER TABLE file MODIFY COLUMN detection_type VARCHAR(20);")
+
 for index, definition in indices.items():
     try:
         cursor.execute(definition)
@@ -196,7 +202,7 @@ def insert_random_data():
         cursor.execute("INSERT INTO transactions (`transaction`, fileset) VALUES (%s, %s)", 
                        (random.randint(1, 100), 1))
 # for testing locally
-insert_random_data()
+# insert_random_data()
 
 conn.commit()
 conn.close()

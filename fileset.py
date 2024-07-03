@@ -145,7 +145,7 @@ def fileset():
             # Table
             html += "<table>\n"
 
-            cursor.execute(f"SELECT file.id, name, size, checksum, detection FROM file WHERE fileset = {id}")
+            cursor.execute(f"SELECT file.id, name, size, checksum, detection, detection_type FROM file WHERE fileset = {id}")
             result = cursor.fetchall()
 
             all_columns = list(result[0].keys()) if result else []
