@@ -131,7 +131,7 @@ def main():
 
     if args.upload:
         for filepath in args.upload:
-            db_insert(parse_dat(filepath), args.user)
+            db_insert(parse_dat(filepath), args.user, args.skiplog)
 
     if args.match:
         for filepath in args.match:
