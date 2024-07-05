@@ -1,21 +1,27 @@
 """
-This script deletes all data from the tables in the database.
+This script deletes all data from the tables in the database and resets auto-increment counters.
 Using it when testing the data insertion.
 """
 
 import pymysql
 import json
 
-def delete_all_data(conn):
+def truncate_all_tables(conn):
     tables = ["filechecksum", "queue", "history", "transactions", "file", "fileset", "game", "engine", "log"]
     cursor = conn.cursor()
     
+    # Disable foreign key checks
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+    
     for table in tables:
         try:
-            cursor.execute(f"DELETE FROM {table}")
-            print(f"Table '{table}' data deleted successfully")
+            cursor.execute(f"TRUNCATE TABLE `{table}`")
+            print(f"Table '{table}' truncated successfully")
         except pymysql.Error as err:
-            print(f"Error deleting data from table '{table}': {err}")
+            print(f"Error truncating table '{table}': {err}")
+    
+    # Enable foreign key checks
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
 
 if __name__ == "__main__":
     with open(__file__ + '/../mysql_config.json') as f:
@@ -42,8 +48,8 @@ if __name__ == "__main__":
         print("Error connecting to MySQL")
         exit(1)
 
-    # Delete all data from tables
-    delete_all_data(conn)
+    # Truncate all tables
+    truncate_all_tables(conn)
 
     # Close connection
     conn.close()
