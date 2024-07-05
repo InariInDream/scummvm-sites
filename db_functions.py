@@ -66,7 +66,7 @@ def insert_game(engine_name, engineid, title, gameid, extra, platform, lang, con
         cursor.execute(f"INSERT INTO game (name, engine, gameid, extra, platform, language) VALUES ('{escape_string(title)}', @engine_last, '{gameid}', '{escape_string(extra)}', '{platform}', '{lang}')")
         cursor.execute("SET @game_last = LAST_INSERT_ID()")
 
-def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip='', username=None):
+def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip='', username=None, skiplog=None):
     status = "detection" if detection else src
     game = "NULL"
     key = "NULL" if key == "" else f"'{key}'"
@@ -99,7 +99,8 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         category_text = f"Updated Fileset:{existing_entry}"
         log_text = f"Updated Fileset:{existing_entry}, {log_text}"
         user = f'cli:{getpass.getuser()}' if username is None else username
-        create_log(escape_string(category_text), user, escape_string(log_text), conn)
+        if not skiplog:
+            create_log(escape_string(category_text), user, escape_string(log_text), conn)
 
         return True
 
@@ -119,7 +120,8 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         log_text = f"Created Fileset:{fileset_last}, from user IP {ip}, {log_text}"
 
     user = f'cli:{getpass.getuser()}' if username is None else username
-    create_log(escape_string(category_text), user, escape_string(log_text), conn)
+    if not skiplog:
+        create_log(escape_string(category_text), user, escape_string(log_text), conn)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
 
@@ -206,7 +208,7 @@ def calc_megakey(fileset):
     key_string = key_string.strip(':')
     return hashlib.md5(key_string.encode()).hexdigest()
 
-def db_insert(data_arr, username=None):
+def db_insert(data_arr, username=None, skiplog=False):
     header = data_arr[0]
     game_data = data_arr[1]
     resources = data_arr[2]
@@ -264,7 +266,7 @@ def db_insert(data_arr, username=None):
         megakey = calc_megakey(fileset) if detection else ""
         log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {status}."
 
-        if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=username):
+        if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=username, skiplog=skiplog):
             for file in fileset["rom"]:
                 insert_file(file, detection, src, conn)
                 for key, value in file.items():
@@ -510,8 +512,10 @@ def process_fileset(fileset, resources, detection, src, conn, transaction_id, fi
     key = calc_key(fileset) if not detection else ""
     megakey = calc_megakey(fileset) if detection else ""
     log_text = f"size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}."
-
-    matched_map = find_matching_filesets(fileset, conn)
+    if src != "dat":
+        matched_map = find_matching_filesets(fileset, conn)
+    else:
+        matched_map = matching_set(fileset, conn)
 
     if matched_map:
         handle_matched_filesets(matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
@@ -551,6 +555,30 @@ def find_matching_filesets(fileset, conn):
                         break
     return matched_map
 
+def matching_set(fileset, conn):
+    matched_map = defaultdict(int)
+    with conn.cursor() as cursor:
+        for file in fileset["rom"]:
+            if "md5" in file:
+                checksum = file["md5"]
+                size = file["size"]
+                query = f"""
+                    SELECT DISTINCT fs.id AS fileset_id
+                    FROM fileset fs
+                    JOIN file f ON fs.id = f.fileset
+                    JOIN filechecksum fc ON f.id = fc.file
+                    WHERE fc.checksum = '{checksum}' AND fc.checktype = 'md5'
+                    AND f.size > {size}
+                    AND fs.status = 'detection'
+                """
+                cursor.execute(query)
+                records = cursor.fetchall()
+                if records:
+                    for record in records:
+                        matched_map[record['fileset_id']] += 1
+                    break
+    return matched_map
+
 def handle_matched_filesets(matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user):
     matched_list = sorted(matched_map.items(), key=lambda x: x[1], reverse=True)
     is_full_matched = False
@@ -565,9 +593,9 @@ def handle_matched_filesets(matched_map, fileset, conn, detection, src, key, meg
 
             if status in ['detection', 'obsolete'] and count == matched_count:
                 is_full_matched = True
-                update_fileset_status(cursor, matched_fileset_id, 'full')
+                update_fileset_status(cursor, matched_fileset_id, 'full' if src != "dat" else "partial")
                 insert_files(fileset, matched_fileset_id, conn, detection)
-                log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
+                log_matched_fileset(src, matched_fileset_id, 'full' if src != "dat" else "partial", user, conn)
             elif status == 'full' and len(fileset['rom']) == count:
                 is_full_matched == True
                 log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
@@ -579,6 +607,8 @@ def handle_matched_filesets(matched_map, fileset, conn, detection, src, key, meg
             elif status == 'scan' and count == matched_count:
                 log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
                 return
+            elif src == 'dat':
+                log_matched_fileset(src, matched_fileset_id, 'partial matched', user, conn)
             else:
                 insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
 
