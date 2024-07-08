@@ -7,6 +7,8 @@ from user_fileset_functions import user_calc_key, file_json_to_array, user_inser
 from pagination import create_page
 import difflib
 from pymysql.converters import escape_string
+from db_functions import find_matching_filesets
+from collections import defaultdict
 
 app = Flask(__name__)
 
@@ -103,6 +105,7 @@ def fileset():
         <table>
         """
             html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Merge</button></td>"
+            html += f"<td><button onclick=\"location.href='/fileset/{id}/match'\">Match</button></td>"
 
             cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
             result = cursor.fetchone()
@@ -233,6 +236,91 @@ def fileset():
             return render_template_string(html)
     finally:
         connection.close()
+
+@app.route('/fileset/<int:id>/match', methods=['GET'])
+def match_fileset_route(id):
+    with open('mysql_config.json') as f:
+        mysql_cred = json.load(f)
+
+    connection = pymysql.connect(host=mysql_cred["servername"],
+                                 user=mysql_cred["username"],
+                                 password=mysql_cred["password"],
+                                 db=mysql_cred["dbname"],
+                                 charset='utf8mb4',
+                                 cursorclass=pymysql.cursors.DictCursor)
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
+            fileset = cursor.fetchone()
+            fileset['rom'] = []
+            if not fileset:
+                return f"No fileset found with id {id}", 404
+
+            cursor.execute(f"SELECT file.id, name, size, checksum, detection, detection_type FROM file WHERE fileset = {id}")
+            result = cursor.fetchall()
+            file_ids = {}
+            for file in result:
+                file_ids[file['id']] = (file['name'], file['size'])
+            cursor.execute(f"SELECT file, checksum, checksize, checktype FROM filechecksum WHERE file IN ({','.join(map(str, file_ids.keys()))})")
+            
+            files = cursor.fetchall()
+            checksum_dict = defaultdict(list)
+            print(files)
+            for i in files:
+                checksum_dict[file_ids[i["file"]][0]].append((i["checksum"], i["checksize"], i["checktype"]))
+            print(checksum_dict)
+            for i in files:
+                temp_dict = {}
+                temp_dict["name"] = file_ids[i["file"]][0]
+                temp_dict["size"] = file_ids[i["file"]][1]
+                for checksum in checksum_dict[temp_dict["name"]]:
+                    temp_dict[f"{checksum[2]}-{checksum[1]}"] = checksum[0]
+                fileset["rom"].append(temp_dict)
+
+            matched_map = find_matching_filesets(fileset, connection)
+
+            html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
+            </head>
+            <body>
+            <h2>Matched Filesets for Fileset: {id}</h2>
+            <table>
+            <tr>
+                <th>Fileset ID</th>
+                <th>Match Count</th>
+                <th>Actions</th>
+            </tr>
+            """
+
+            for fileset_id, match_count in matched_map.items():
+                html += f"""
+                <tr>
+                    <td>{fileset_id}</td>
+                    <td>{match_count}</td>
+                    <td><a href="/fileset?id={fileset_id}">View Details</a></td>
+                    <td>
+                        <form method="POST" action="/fileset/{id}/merge/confirm">
+                            <input type="hidden" name="source_id" value="{id}">
+                            <input type="hidden" name="target_id" value="{fileset_id}">
+                            <input type="submit" value="Merge">
+                        </form>
+                    </td>
+                    <td>
+                        <form method="GET" action="/fileset?id={id}">
+                            <input type="submit" value="Cancel">
+                        </form>
+                    </td>
+                </tr>
+                """
+
+            html += "</table></body></html>"
+            return render_template_string(html)
+    finally:
+        connection.close()
         
 @app.route('/fileset/<int:id>/merge', methods=['GET', 'POST'])
 def merge_fileset(id):
@@ -322,7 +410,7 @@ def merge_fileset(id):
     
 @app.route('/fileset/<int:id>/merge/confirm', methods=['GET', 'POST'])
 def confirm_merge(id):
-    target_id = request.args.get('target_id', type=int)
+    target_id = request.args.get('target_id', type=int) if request.method == 'GET' else request.form.get('target_id')
 
     with open('mysql_config.json') as f:
         mysql_cred = json.load(f)
