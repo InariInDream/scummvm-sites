@@ -7,7 +7,7 @@ from user_fileset_functions import user_calc_key, file_json_to_array, user_inser
 from pagination import create_page
 import difflib
 from pymysql.converters import escape_string
-from db_functions import find_matching_filesets
+from db_functions import find_matching_filesets, update_history
 from collections import defaultdict
 
 app = Flask(__name__)
@@ -210,6 +210,8 @@ def fileset():
 
             # Generate the HTML for the fileset history
             cursor.execute(f"SELECT `timestamp`, category, `text`, id FROM log WHERE `text` REGEXP 'Fileset:{id}' ORDER BY `timestamp` DESC, id DESC")
+            # cursor.execute(f"SELECT `timestamp`, fileset, oldfileset FROM history WHERE fileset = {id} ORDER BY `timestamp` DESC")
+            
             logs = cursor.fetchall()
 
             html += "<h3>Fileset history</h3>"
@@ -220,18 +222,29 @@ def fileset():
             html += "<th>Log ID</th>\n"
             cursor.execute("SELECT * FROM history")
             history = cursor.fetchall()
-
+            print(f"History: {history}")
             oldfilesets = [history_row['oldfileset'] for history_row in history]
             cursor.execute(f"""SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:%' AND `category` NOT LIKE 'merge%' AND `text` REGEXP 'Fileset:({"|".join(map(str, oldfilesets))})' ORDER BY `timestamp` DESC, id DESC""")
             logs = cursor.fetchall()
-
-            for log in logs:
+            
+            for h in history:
+                cursor.execute(f"SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:{h['oldfileset']}' ORDER BY `timestamp` DESC, id DESC")
+                # logs.extend(cursor.fetchall())
+                print(f"Logs: {logs}")
                 html += "<tr>\n"
-                html += f"<td>{log['timestamp']}</td>\n"
-                html += f"<td>{log['category']}</td>\n"
-                html += f"<td>{log['text']}</td>\n"
-                html += f"<td><a href='logs?id={log['id']}'>{log['id']}</a></td>\n"
+                html += f"<td>{h['timestamp']}</td>\n"
+                html += f"<td>merge</td>\n"
+                html += f"<td><a href='fileset?id={h['oldfileset']}'>Fileset {h['oldfileset']}</a> merged into fileset <a href='fileset?id={h['fileset']}'>Fileset {h['fileset']}</a></td>\n"
+                html += f"<td><a href='logs?id={h['id']}'>{h['id']}</a></td>\n"
                 html += "</tr>\n"
+
+            # for log in logs:
+            #     html += "<tr>\n"
+            #     html += f"<td>{log['timestamp']}</td>\n"
+            #     html += f"<td>{log['category']}</td>\n"
+            #     html += f"<td>{log['text']}</td>\n"
+            #     html += f"<td><a href='logs?id={log['id']}'>{log['id']}</a></td>\n"
+            #     html += "</tr>\n"
             html += "</table>\n"
             return render_template_string(html)
     finally:

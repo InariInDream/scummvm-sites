@@ -100,8 +100,9 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         log_text = f"Updated Fileset:{existing_entry}, {log_text}"
         user = f'cli:{getpass.getuser()}' if username is None else username
         if not skiplog:
-            create_log(escape_string(category_text), user, escape_string(log_text), conn)
-
+            log_last = create_log(escape_string(category_text), user, escape_string(log_text), conn)
+            update_history(existing_entry, existing_entry, conn, log_last)
+            
         return True
 
     # $game and $key should not be parsed as a mysql string, hence no quotes
@@ -121,7 +122,8 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
 
     user = f'cli:{getpass.getuser()}' if username is None else username
     if not skiplog:
-        create_log(escape_string(category_text), user, escape_string(log_text), conn)
+        log_last = create_log(escape_string(category_text), user, escape_string(log_text), conn)
+        update_history(fileset_last, fileset_last, conn, log_last)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
 
@@ -170,6 +172,21 @@ def delete_filesets(conn):
 
 def create_log(category, user, text, conn):
     query = f"INSERT INTO log (`timestamp`, category, user, `text`) VALUES (FROM_UNIXTIME({int(time.time())}), '{escape_string(category)}', '{escape_string(user)}', '{escape_string(text)}')"
+    with conn.cursor() as cursor:
+        try:
+            cursor.execute(query)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Creating log failed: {e}")
+            log_last = None
+        else:
+            cursor.execute("SELECT LAST_INSERT_ID()")
+            log_last = cursor.fetchone()['LAST_INSERT_ID()']
+    return log_last
+
+def update_history(source_id, target_id, conn, log_last=None):
+    query = f"INSERT INTO history (`timestamp`, fileset, oldfileset, log) VALUES (NOW(), {target_id}, {source_id}, {log_last})"
     with conn.cursor() as cursor:
         try:
             cursor.execute(query)
@@ -663,7 +680,8 @@ def insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_
 def log_matched_fileset(src, fileset_id, state, user, conn):
     category_text = f"Matched from {src}"
     log_text = f"Matched Fileset:{fileset_id}. State {state}."
-    create_log(escape_string(category_text), user, escape_string(log_text), conn)
+    log_last = create_log(escape_string(category_text), user, escape_string(log_text), conn)
+    update_history(fileset_id, fileset_id, conn, log_last)
 
 def finalize_fileset_insertion(conn, transaction_id, src, filepath, author, version, source_status, user):
     with conn.cursor() as cursor:
