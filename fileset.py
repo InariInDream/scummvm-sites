@@ -40,6 +40,7 @@ def index():
         <li><a href="{{ url_for('fileset') }}">Fileset</a></li>
         <li><a href="{{ url_for('user_games_list') }}">User Games List</a></li>
         <li><a href="{{ url_for('games_list') }}">Games List</a></li>
+        <li><a href="{{ url_for('fileset_search') }}">Fileset Search</a></li>
     </ul>
     <h2>Logs</h2>
     <ul>
@@ -52,8 +53,8 @@ def index():
 
 @app.route('/fileset', methods=['GET', 'POST'])
 def fileset():
-    id = request.args.get('id', default = 1, type = int)
-    widetable = request.args.get('widetable', default = 'false', type = str)
+    id = request.args.get('id', default=1, type=int)
+    widetable = request.args.get('widetable', default='false', type=str)
     # Load MySQL credentials from a JSON file
     with open('mysql_config.json') as f:
         mysql_cred = json.load(f)
@@ -95,15 +96,15 @@ def fileset():
 
             # Display fileset details
             html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
-        </head>
-        <body>
-        <h2><u>Fileset: {id}</u></h2>
-        <table>
-        """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <link rel="stylesheet" type="text/css" href="{{{{ url_for('static', filename='style.css') }}}}">
+            </head>
+            <body>
+            <h2><u>Fileset: {id}</u></h2>
+            <table>
+            """
             html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Merge</button></td>"
             html += f"<td><button onclick=\"location.href='/fileset/{id}/match'\">Match</button></td>"
 
@@ -219,32 +220,29 @@ def fileset():
             html += "<th>Timestamp</th>\n"
             html += "<th>Category</th>\n"
             html += "<th>Description</th>\n"
-            html += "<th>Log ID</th>\n"
-            cursor.execute("SELECT * FROM history")
+            html += "<th>Log Text</th>\n"
+
+            cursor.execute(f"SELECT * FROM history WHERE fileset = {id} OR oldfileset = {id}")
             history = cursor.fetchall()
             print(f"History: {history}")
-            oldfilesets = [history_row['oldfileset'] for history_row in history]
-            cursor.execute(f"""SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:%' AND `category` NOT LIKE 'merge%' AND `text` REGEXP 'Fileset:({"|".join(map(str, oldfilesets))})' ORDER BY `timestamp` DESC, id DESC""")
-            logs = cursor.fetchall()
-            
+
             for h in history:
                 cursor.execute(f"SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:{h['oldfileset']}' ORDER BY `timestamp` DESC, id DESC")
-                # logs.extend(cursor.fetchall())
+                logs = cursor.fetchall()
                 print(f"Logs: {logs}")
                 html += "<tr>\n"
                 html += f"<td>{h['timestamp']}</td>\n"
                 html += f"<td>merge</td>\n"
                 html += f"<td><a href='fileset?id={h['oldfileset']}'>Fileset {h['oldfileset']}</a> merged into fileset <a href='fileset?id={h['fileset']}'>Fileset {h['fileset']}</a></td>\n"
-                html += f"<td><a href='logs?id={h['id']}'>{h['id']}</a></td>\n"
+                # html += f"<td><a href='logs?id={h['log']}'>Log {h['log']}</a></td>\n"
+                if h['log']:
+                    cursor.execute(f"SELECT `text` FROM log WHERE id = {h['log']}")
+                    log_text = cursor.fetchone()['text']
+                    html += f"<td><a href='logs?id={h['log']}'>Log {h['log']}</a>{log_text}</td>\n"
+                else:
+                    html += "<td>No log available</td>\n"
                 html += "</tr>\n"
 
-            # for log in logs:
-            #     html += "<tr>\n"
-            #     html += f"<td>{log['timestamp']}</td>\n"
-            #     html += f"<td>{log['category']}</td>\n"
-            #     html += f"<td>{log['text']}</td>\n"
-            #     html += f"<td><a href='logs?id={log['id']}'>{log['id']}</a></td>\n"
-            #     html += "</tr>\n"
             html += "</table>\n"
             return render_template_string(html)
     finally:
@@ -752,6 +750,27 @@ def logs():
     }
     return render_template_string(create_page(filename, 25, records_table, select_query, order, filters))
 
+@app.route('/fileset_search')
+def fileset_search():
+    filename = "fileset_search"
+    records_table = "fileset"
+    select_query = """
+    SELECT extra, platform, language, game.name, megakey,
+    status, fileset.id as fileset
+    FROM fileset
+    JOIN game ON game.id = fileset.game
+    """
+    order = "ORDER BY fileset.id"
+    filters = {
+        "fileset": "fileset",
+        "name": "game",
+        "extra": "game",
+        "platform": "game",
+        "language": "game",
+        "megakey": "fileset",
+        "status": "fileset"
+    }
+    return render_template_string(create_page(filename, 25, records_table, select_query, order, filters))
 
 if __name__ == '__main__':
     app.run()
