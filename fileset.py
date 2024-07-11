@@ -7,7 +7,7 @@ from user_fileset_functions import user_calc_key, file_json_to_array, user_inser
 from pagination import create_page
 import difflib
 from pymysql.converters import escape_string
-from db_functions import find_matching_filesets, update_history
+from db_functions import find_matching_filesets, get_all_related_filesets, convert_log_text_to_links
 from collections import defaultdict
 
 app = Flask(__name__)
@@ -105,8 +105,8 @@ def fileset():
             <h2><u>Fileset: {id}</u></h2>
             <table>
             """
-            html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Merge</button></td>"
-            html += f"<td><button onclick=\"location.href='/fileset/{id}/match'\">Match</button></td>"
+            html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Manual Merge</button></td>"
+            html += f"<td><button onclick=\"location.href='/fileset/{id}/match'\">Match and Merge</button></td>"
 
             cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
             result = cursor.fetchone()
@@ -222,7 +222,9 @@ def fileset():
             html += "<th>Description</th>\n"
             html += "<th>Log Text</th>\n"
 
-            cursor.execute(f"SELECT * FROM history WHERE fileset = {id} OR oldfileset = {id}")
+            related_filesets = get_all_related_filesets(id, conn)
+
+            cursor.execute(f"SELECT * FROM history WHERE fileset IN ({','.join(map(str, related_filesets))}) OR oldfileset IN ({','.join(map(str, related_filesets))})")
             history = cursor.fetchall()
             print(f"History: {history}")
 
@@ -238,7 +240,8 @@ def fileset():
                 if h['log']:
                     cursor.execute(f"SELECT `text` FROM log WHERE id = {h['log']}")
                     log_text = cursor.fetchone()['text']
-                    html += f"<td><a href='logs?id={h['log']}'>Log {h['log']}</a>{log_text}</td>\n"
+                    log_text = convert_log_text_to_links(log_text)
+                    html += f"<td><a href='logs?id={h['log']}'>Log {h['log']}</a>: {log_text}</td>\n"
                 else:
                     html += "<td>No log available</td>\n"
                 html += "</tr>\n"
@@ -308,6 +311,8 @@ def match_fileset_route(id):
             """
 
             for fileset_id, match_count in matched_map.items():
+                if fileset_id == id:
+                    continue
                 html += f"""
                 <tr>
                     <td>{fileset_id}</td>
