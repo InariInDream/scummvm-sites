@@ -7,6 +7,7 @@ import hashlib
 import os
 from pymysql.converters import escape_string
 from collections import defaultdict
+import re
 
 def db_connect():
     with open('mysql_config.json') as f:
@@ -118,12 +119,14 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
 
     log_text = f"Created Fileset:{fileset_last}, {log_text}"
     if src == 'user':
-        log_text = f"Created Fileset:{fileset_last}, from user IP {ip}, {log_text}"
+        log_text = f"Created Fileset:{fileset_last}, from user: IP {ip}, {log_text}"
 
     user = f'cli:{getpass.getuser()}' if username is None else username
     if not skiplog:
         log_last = create_log(escape_string(category_text), user, escape_string(log_text), conn)
         update_history(fileset_last, fileset_last, conn, log_last)
+    else:
+        update_history(fileset_last, fileset_last, conn)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
 
@@ -186,7 +189,7 @@ def create_log(category, user, text, conn):
     return log_last
 
 def update_history(source_id, target_id, conn, log_last=None):
-    query = f"INSERT INTO history (`timestamp`, fileset, oldfileset, log) VALUES (NOW(), {target_id}, {source_id}, {log_last})"
+    query = f"INSERT INTO history (`timestamp`, fileset, oldfileset, log) VALUES (NOW(), {target_id}, {source_id}, {log_last if log_last is not None else 0})"
     with conn.cursor() as cursor:
         try:
             cursor.execute(query)
@@ -199,6 +202,34 @@ def update_history(source_id, target_id, conn, log_last=None):
             cursor.execute("SELECT LAST_INSERT_ID()")
             log_last = cursor.fetchone()['LAST_INSERT_ID()']
     return log_last
+
+def get_all_related_filesets(fileset_id, conn, visited=None):
+    if visited is None:
+        visited = set()
+
+    if fileset_id in visited:
+        return []
+    
+    visited.add(fileset_id)
+
+    related_filesets = [fileset_id]
+    with conn.cursor() as cursor:
+        cursor.execute(f"SELECT fileset, oldfileset FROM history WHERE fileset = {fileset_id} OR oldfileset = {fileset_id}")
+        history_records = cursor.fetchall()
+
+    for record in history_records:
+        if record['fileset'] not in visited:
+            related_filesets.extend(get_all_related_filesets(record['fileset'], conn, visited))
+        if record['oldfileset'] not in visited:
+            related_filesets.extend(get_all_related_filesets(record['oldfileset'], conn, visited))
+
+    return related_filesets
+
+def convert_log_text_to_links(log_text):
+    log_text = re.sub(r'Fileset:(\d+)', r'<a href="/fileset?id=\1">Fileset:\1</a>', log_text)
+    log_text = re.sub(r'user:(\w+)', r'<a href="/log?search=user:\1">user:\1</a>', log_text)
+    log_text = re.sub(r'Transaction:(\d+)', r'<a href="/transaction?id=\1">Transaction:\1</a>', log_text)
+    return log_text
 
 def calc_key(fileset):
     key_string = ""
@@ -553,6 +584,7 @@ def find_matching_filesets(fileset, conn):
     matched_map = defaultdict(int)
     with conn.cursor() as cursor:
         for file in fileset["rom"]:
+            matched_set = set()
             for key, value in file.items():
                 if key not in ["name", "size"]:
                     checksum = file[key]
@@ -568,8 +600,12 @@ def find_matching_filesets(fileset, conn):
                     records = cursor.fetchall()
                     if records:
                         for record in records:
-                            matched_map[record['fileset_id']] += 1
-                        break
+                            matched_set.add(record['fileset_id'])
+
+            for id in matched_set:
+                matched_map[id] += 1
+                        
+    print(matched_map)
     return matched_map
 
 def matching_set(fileset, conn):
