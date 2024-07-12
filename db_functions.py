@@ -727,3 +727,52 @@ def finalize_fileset_insertion(conn, transaction_id, src, filepath, author, vers
         log_text = f"Completed loading DAT file, filename {filepath}, size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
     conn.close()
+
+def find_user_match_filesets(fileset, conn):
+    matched_map = defaultdict(list)
+    with conn.cursor() as cursor:
+        for file in fileset["files"]:
+            matched_set = set()
+            for checksum_info in file["checksums"]:
+                checksum = checksum_info["checksum"]
+                checktype = checksum_info["type"]
+                checksize, checktype, checksum = get_checksum_props(checktype, checksum)
+                query = f"""SELECT DISTINCT fs.id AS fileset_id
+                                FROM fileset fs
+                                JOIN file f ON fs.id = f.fileset
+                                JOIN filechecksum fc ON f.id = fc.file
+                                WHERE fc.checksum = '{checksum}' AND fc.checktype = '{checktype}'
+                                AND fs.status IN ('detection', 'dat', 'scan', 'partial', 'full', 'obsolete')"""
+                cursor.execute(query)
+                records = cursor.fetchall()
+                if records:
+                    for record in records:
+                        matched_set.add(record['fileset_id'])
+            for id in matched_set:
+                matched_map[id] += 1
+                        
+    print(matched_map)
+    return matched_map
+
+def user_integrity_check(data):
+    print(data)
+    src = "user"
+    source_status = src
+    try:
+        conn = db_connect()
+    except Exception as e:
+        print(f"Failed to connect to database: {e}")
+        return
+    
+    conn.cursor().execute(f"SET @fileset_time_last = {int(time.time())}")
+
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT MAX(`transaction`) FROM transactions")
+        transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
+
+    category_text = f"Uploaded from {src}"
+    log_text = f"Started loading file, State {source_status}. Transaction: {transaction_id}"
+
+    user = f'cli:{getpass.getuser()}'
+
+    create_log(escape_string(category_text), user, escape_string(log_text), conn)
