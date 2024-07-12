@@ -279,18 +279,24 @@ def match_fileset_route(id):
             cursor.execute(f"SELECT file, checksum, checksize, checktype FROM filechecksum WHERE file IN ({','.join(map(str, file_ids.keys()))})")
             
             files = cursor.fetchall()
-            checksum_dict = defaultdict(list)
-            print(files)
+            checksum_dict = defaultdict(lambda: {"name": "", "size": 0, "checksums": {}})
+
             for i in files:
-                checksum_dict[file_ids[i["file"]][0]].append((i["checksum"], i["checksize"], i["checktype"]))
-            print(checksum_dict)
-            for i in files:
-                temp_dict = {}
-                temp_dict["name"] = file_ids[i["file"]][0]
-                temp_dict["size"] = file_ids[i["file"]][1]
-                for checksum in checksum_dict[temp_dict["name"]]:
-                    temp_dict[f"{checksum[2]}-{checksum[1]}"] = checksum[0]
-                fileset["rom"].append(temp_dict)
+                file_id = i["file"]
+                file_name, file_size = file_ids[file_id]
+                checksum_dict[file_name]["name"] = file_name
+                checksum_dict[file_name]["size"] = file_size
+                checksum_key = f"{i['checktype']}-{i['checksize']}" if i['checksize'] != 0 else i['checktype']
+                checksum_dict[file_name]["checksums"][checksum_key] = i["checksum"]
+
+            fileset["rom"] = [
+                {
+                    "name": value["name"],
+                    "size": value["size"],
+                    **value["checksums"]
+                }
+                for value in checksum_dict.values()
+            ]
 
             matched_map = find_matching_filesets(fileset, connection)
 
