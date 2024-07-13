@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, url_for, render_template_string, jsonify
+from flask import Flask, request, render_template, redirect, url_for, render_template_string, jsonify, flash
 import pymysql.cursors
 import json
 import re
@@ -7,7 +7,7 @@ from user_fileset_functions import user_calc_key, file_json_to_array, user_inser
 from pagination import create_page
 import difflib
 from pymysql.converters import escape_string
-from db_functions import find_matching_filesets, get_all_related_filesets, convert_log_text_to_links
+from db_functions import find_matching_filesets, get_all_related_filesets, convert_log_text_to_links, user_integrity_check
 from collections import defaultdict
 
 app = Flask(__name__)
@@ -782,6 +782,48 @@ def fileset_search():
         "status": "fileset"
     }
     return render_template_string(create_page(filename, 25, records_table, select_query, order, filters))
+
+@app.route('/upload', methods=['GET'])
+def upload_page():
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Upload Game Integrity Check</title>
+    </head>
+    <body>
+        <h2>Upload Your Game Integrity Check (JSON)</h2>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".json" required>
+            <input type="submit" value="Upload">
+        </form>
+        {{ get_flashed_messages() }}
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        flash('No file part')
+        return redirect(request.url)
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        flash('No selected file')
+        return redirect(request.url)
+    
+    if file and file.filename.endswith('.json'):
+        try:
+            data = json.load(file)
+            ret = user_integrity_check(data)
+            flash('File successfully uploaded and processed')
+        except Exception as e:
+            flash(f'Error processing file: {e}')
+    
+    return redirect(url_for('upload_page'))
 
 if __name__ == '__main__':
     app.run()
