@@ -766,13 +766,68 @@ def user_integrity_check(data):
     
     conn.cursor().execute(f"SET @fileset_time_last = {int(time.time())}")
 
-    with conn.cursor() as cursor:
-        cursor.execute("SELECT MAX(`transaction`) FROM transactions")
-        transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT MAX(`transaction`) FROM transactions")
+            transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
 
-    category_text = f"Uploaded from {src}"
-    log_text = f"Started loading file, State {source_status}. Transaction: {transaction_id}"
+            category_text = f"Uploaded from {src}"
+            log_text = f"Started loading file, State {source_status}. Transaction: {transaction_id}"
 
-    user = f'cli:{getpass.getuser()}'
+            user = f'cli:{getpass.getuser()}'
 
-    create_log(escape_string(category_text), user, escape_string(log_text), conn)
+            create_log(escape_string(category_text), user, escape_string(log_text), conn)
+            
+            matched_map= find_user_match_filesets(data, conn)
+            
+            # show matched, missing, extra
+            extra_map = defaultdict(list)
+            missing_map = defaultdict(list)
+            
+            for fileset_id in matched_map.keys():
+                cursor.execute(f"SELECT * FROM file WHERE fileset = {fileset_id}")
+                target_files = cursor.fetchall()
+                target_files_dict = {}
+                print(f"Target files: {target_files}")
+                for target_file in target_files:
+                    cursor.execute(f"SELECT * FROM filechecksum WHERE file = {target_file['id']}")
+                    target_checksums = cursor.fetchall()
+                    for checksum in target_checksums:
+                        target_files_dict[checksum['checksum']] = target_file
+                        target_files_dict[target_file['id']] = f"{checksum['checktype']}-{checksum['checksize']}"
+                for file in data["files"]:
+                    file_exists = False
+                    for checksum_info in file["checksums"]:
+                        checksum = checksum_info["checksum"]
+                        checktype = checksum_info["type"]
+                        checksize, checktype, checksum = get_checksum_props(checktype, checksum)
+                        if checksum in target_files_dict and not file_exists:
+                            file_exists = True
+                            target_id = target_files_dict[checksum]['id']
+                    if not file_exists:
+                        missing_map[fileset_id].append(file)
+            
+            for file in data['files']:
+                file_exists = False
+                for checksum_info in file["checksums"]:
+                    checksum = checksum_info["checksum"]
+                    checktype = checksum_info["type"]
+                    checksize, checktype, checksum = get_checksum_props(checktype, checksum)
+                    if checksum in target_files_dict and not file_exists:
+                        file_exists = True
+                if not file_exists:
+                    extra_map[fileset_id].append(file)
+    
+    except Exception as e:
+        conn.rollback()
+        print(f"Error processing user data: {e}")
+    finally:
+        category_text = f"Uploaded from {src}"
+        log_text = f"Completed loading file, State {source_status}. Transaction: {transaction_id}"
+        create_log(escape_string(category_text), user, escape_string(log_text), conn)
+        conn.close()
+        
+    return matched_map, missing_map, extra_map
+                    
+        
+            
