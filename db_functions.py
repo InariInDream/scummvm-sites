@@ -729,7 +729,7 @@ def finalize_fileset_insertion(conn, transaction_id, src, filepath, author, vers
     conn.close()
 
 def find_user_match_filesets(fileset, conn):
-    matched_map = defaultdict(list)
+    matched_map = defaultdict(int)
     with conn.cursor() as cursor:
         for file in fileset["files"]:
             matched_set = set()
