@@ -12,6 +12,8 @@ from collections import defaultdict
 
 app = Flask(__name__)
 
+secret_key = os.urandom(24)
+
 with open('mysql_config.json') as f:
     mysql_cred = json.load(f)
 
@@ -818,12 +820,50 @@ def upload_file():
     if file and file.filename.endswith('.json'):
         try:
             data = json.load(file)
-            ret = user_integrity_check(data)
+            matched_map, missing_map, extra_map = user_integrity_check(data)
             flash('File successfully uploaded and processed')
         except Exception as e:
             flash(f'Error processing file: {e}')
+        finally:
+            html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+            </head>
+            <body>
+            <h2>Upload Game Integrity Check</h2>
+            <body>
+                <h2>Upload Your Game Integrity Check (JSON)</h2>
+                <form action="/upload" method="post" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".json" required>
+                    <input type="submit" value="Upload">
+                </form>
+                <h2>Results</h2>
+                <h3>Matched Filesets</h3>
+                <ul>
+                {% for fileset_id, count in matched_map.items() %}
+                    <li>Fileset {{ fileset_id }}: {{ count }} matches</li>
+                {% endfor %}
+                </ul>
+                <h3>Missing Filesets</h3>
+                <ul>
+                {% for fileset_id, count in missing_map.items() %}
+                    <li>Fileset {{ fileset_id }}: {{ count }} missing</li>
+                {% endfor %}
+                </ul>
+                <h3>Extra Filesets</h3>
+                <ul>
+                {% for fileset_id, count in extra_map.items() %}
+                    <li>Fileset {{ fileset_id }}: {{ count }} extra</li>
+                {% endfor %}
+                </ul>
+            </body>
+            </html>
+            """
+        return render_template_string(html, matched_map=matched_map, missing_map=missing_map, extra_map=extra_map)
     
-    return redirect(url_for('upload_page'))
 
 if __name__ == '__main__':
-    app.run()
+    app.secret_key = secret_key
+    app.run(debug=True)
