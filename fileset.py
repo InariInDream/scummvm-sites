@@ -818,6 +818,9 @@ def upload_file():
         return redirect(request.url)
     
     if file and file.filename.endswith('.json'):
+        matched_map = {}
+        missing_map = {}
+        extra_map = {}
         try:
             data = json.load(file)
             matched_map, missing_map, extra_map = user_integrity_check(data)
@@ -832,37 +835,82 @@ def upload_file():
                 <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
             </head>
             <body>
-            <h2>Upload Game Integrity Check</h2>
-            <body>
-                <h2>Upload Your Game Integrity Check (JSON)</h2>
+                <h2>Upload Game Integrity Check</h2>
                 <form action="/upload" method="post" enctype="multipart/form-data">
                     <input type="file" name="file" accept=".json" required>
                     <input type="submit" value="Upload">
                 </form>
                 <h2>Results</h2>
                 <h3>Matched Filesets</h3>
-                <ul>
-                {% for fileset_id, count in matched_map.items() %}
-                    <li>Fileset {{ fileset_id }}: {{ count }} matches</li>
-                {% endfor %}
-                </ul>
+                <table>
+                <thead>
+                    <tr>
+                        <th>Fileset ID</th>
+                        <th>Match Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+
+            for fileset_id, count in matched_map.items():
+                html += f"""
+                <tr>
+                    <td><a href='fileset?id={fileset_id}'>{fileset_id}</a></td>
+                    <td>{count}</td>
+                </tr>
+                """
+            
+            html += """
+                </tbody>
+                </table>
                 <h3>Missing Filesets</h3>
-                <ul>
-                {% for fileset_id, count in missing_map.items() %}
-                    <li>Fileset {{ fileset_id }}: {{ count }} missing</li>
-                {% endfor %}
-                </ul>
+                <table>
+                <thead>
+                    <tr>
+                        <th>Fileset ID</th>
+                        <th>Missing Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            
+            for fileset_id, count in missing_map.items():
+                html += f"""
+                <tr>
+                    <td><a href='fileset?id={fileset_id}'>{fileset_id}</a></td>
+                    <td>{len(count)}</td>
+                </tr>
+                """
+            
+            html += """
+                </tbody>
+                </table>
                 <h3>Extra Filesets</h3>
-                <ul>
-                {% for fileset_id, count in extra_map.items() %}
-                    <li>Fileset {{ fileset_id }}: {{ count }} extra</li>
-                {% endfor %}
-                </ul>
+                <table>
+                <thead>
+                    <tr>
+                        <th>Fileset ID</th>
+                        <th>Extra Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            
+            for fileset_id, count in extra_map.items():
+                html += f"""
+                <tr>
+                    <td><a href='fileset?id={fileset_id}'>{fileset_id}</a></td>
+                    <td>{len(count)}</td>
+                </tr>
+                """
+            
+            html += """
+                </tbody>
+                </table>
             </body>
             </html>
             """
-        return render_template_string(html, matched_map=matched_map, missing_map=missing_map, extra_map=extra_map)
-    
+        return render_template_string(html)
 
 if __name__ == '__main__':
     app.secret_key = secret_key
