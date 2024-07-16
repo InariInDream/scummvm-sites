@@ -755,7 +755,6 @@ def find_user_match_filesets(fileset, conn):
     return matched_map
 
 def user_integrity_check(data):
-    print(data)
     src = "user"
     source_status = src
     try:
@@ -778,7 +777,7 @@ def user_integrity_check(data):
 
             create_log(escape_string(category_text), user, escape_string(log_text), conn)
             
-            matched_map= find_user_match_filesets(data, conn)
+            matched_map = find_user_match_filesets(data, conn)
             
             # show matched, missing, extra
             extra_map = defaultdict(list)
@@ -788,14 +787,30 @@ def user_integrity_check(data):
                 cursor.execute(f"SELECT * FROM file WHERE fileset = {fileset_id}")
                 target_files = cursor.fetchall()
                 target_files_dict = {}
-                print(f"Target files: {target_files}")
                 for target_file in target_files:
                     cursor.execute(f"SELECT * FROM filechecksum WHERE file = {target_file['id']}")
                     target_checksums = cursor.fetchall()
                     for checksum in target_checksums:
                         target_files_dict[checksum['checksum']] = target_file
-                        target_files_dict[target_file['id']] = f"{checksum['checktype']}-{checksum['checksize']}"
+                        # target_files_dict[target_file['id']] = f"{checksum['checktype']}-{checksum['checksize']}"
+                
+                # Collect all the checksums from data['files']
+                data_files_set = set()
                 for file in data["files"]:
+                    for checksum_info in file["checksums"]:
+                        checksum = checksum_info["checksum"]
+                        checktype = checksum_info["type"]
+                        checksize, checktype, checksum = get_checksum_props(checktype, checksum)
+                        data_files_set.add(checksum)
+                
+                # Identify missing files
+                for checksum, target_file in target_files_dict.items():
+                    if checksum not in data_files_set:
+                        
+                        missing_map[fileset_id].append(target_file)
+
+                # Identify extra files
+                for file in data['files']:
                     file_exists = False
                     for checksum_info in file["checksums"]:
                         checksum = checksum_info["checksum"]
@@ -803,20 +818,8 @@ def user_integrity_check(data):
                         checksize, checktype, checksum = get_checksum_props(checktype, checksum)
                         if checksum in target_files_dict and not file_exists:
                             file_exists = True
-                            target_id = target_files_dict[checksum]['id']
                     if not file_exists:
-                        missing_map[fileset_id].append(file)
-            
-            for file in data['files']:
-                file_exists = False
-                for checksum_info in file["checksums"]:
-                    checksum = checksum_info["checksum"]
-                    checktype = checksum_info["type"]
-                    checksize, checktype, checksum = get_checksum_props(checktype, checksum)
-                    if checksum in target_files_dict and not file_exists:
-                        file_exists = True
-                if not file_exists:
-                    extra_map[fileset_id].append(file)
+                        extra_map[fileset_id].append(file)
     
     except Exception as e:
         conn.rollback()
@@ -826,8 +829,6 @@ def user_integrity_check(data):
         log_text = f"Completed loading file, State {source_status}. Transaction: {transaction_id}"
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
         conn.close()
-        
+
     return matched_map, missing_map, extra_map
-                    
-        
-            
+
