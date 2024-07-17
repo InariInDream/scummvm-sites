@@ -154,6 +154,18 @@ except:
     # if aleady exists, change the length of the column
     cursor.execute("ALTER TABLE file MODIFY COLUMN detection_type VARCHAR(20);")
 
+try:
+    cursor.execute("ALTER TABLE file ADD COLUMN `timestamp` TIMESTAMP NOT NULL;")
+except:
+    # if aleady exists, change the length of the column
+    cursor.execute("ALTER TABLE file MODIFY COLUMN `timestamp` TIMESTAMP NOT NULL;")
+
+try:
+    cursor.execute("ALTER TABLE fileset ADD COLUMN `user_count` INT;")
+except:
+    # if aleady exists, change the length of the column
+    cursor.execute("ALTER TABLE fileset MODIFY COLUMN `user_count` INT;")
+
 for index, definition in indices.items():
     try:
         cursor.execute(definition)
