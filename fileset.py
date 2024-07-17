@@ -151,7 +151,7 @@ def fileset():
             # Table
             html += "<table>\n"
 
-            cursor.execute(f"SELECT file.id, name, size, checksum, detection, detection_type FROM file WHERE fileset = {id}")
+            cursor.execute(f"SELECT file.id, name, size, checksum, detection, detection_type, `timestamp` FROM file WHERE fileset = {id}")
             result = cursor.fetchall()
 
             all_columns = list(result[0].keys()) if result else []
@@ -300,7 +300,7 @@ def match_fileset_route(id):
                 for value in checksum_dict.values()
             ]
 
-            matched_map = find_matching_filesets(fileset, connection)
+            matched_map = find_matching_filesets(fileset, connection, fileset['status'])
 
             html = f"""
             <!DOCTYPE html>
@@ -581,8 +581,8 @@ def execute_merge(id, source=None, target=None):
 
                 for file in source_files:
                     cursor.execute(f"""
-                    INSERT INTO file (name, size, checksum, fileset, detection)
-                    VALUES ('{escape_string(file['name']).lower()}', '{file['size']}', '{file['checksum']}', {target_id}, {file['detection']})
+                    INSERT INTO file (name, size, checksum, fileset, detection, `timestamp`)
+                    VALUES ('{escape_string(file['name']).lower()}', '{file['size']}', '{file['checksum']}', {target_id}, {file['detection']}, NOW())
                     """)
 
                     cursor.execute("SELECT LAST_INSERT_ID() as file_id")
@@ -632,8 +632,8 @@ def execute_merge(id, source=None, target=None):
                             file_exists = True
                             break
                     print(file_exists)
-                    cursor.execute("INSERT INTO file (name, size, checksum, fileset, detection) VALUES (%s, %s, %s, %s, %s)",
-                                   (source_file['name'], source_file['size'], source_file['checksum'], target_id, source_file['detection']))
+                    cursor.execute(f"""INSERT INTO file (name, size, checksum, fileset, detection, `timestamp`) VALUES (
+                        '{source_file['name']}', '{source_file['size']}', '{source_file['checksum']}', {target_id}, {source_file['detection']}, NOW())""")
                     new_file_id = cursor.lastrowid
                     for checksum in source_checksums:
                         # TODO: Handle the string
