@@ -830,7 +830,8 @@ def user_integrity_check(data):
                 populate_file(data, matched_fileset_id, conn, None, src)
                 log_matched_fileset(src, matched_fileset_id, 'partial', user, conn)
             elif status == "user" and count == matched_count:
-                pass
+                add_usercount(matched_fileset_id, conn)
+                log_matched_fileset(src, matched_fileset_id, 'user', user, conn)
             else:
                 insert_new_fileset(data, conn, None, src, key, None, transaction_id, log_text, user)
             finalize_fileset_insertion(conn, transaction_id, src, None, user, 0, source_status, user)
@@ -843,3 +844,7 @@ def user_integrity_check(data):
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
         conn.close()
     return matched_map, missing_map, extra_map
+
+def add_usercount(fileset, conn):
+    with conn.cursor() as cursor:
+        cursor.execute(f"UPDATE fileset SET user_count = COALESCE(user_count, 0) + 1 WHERE id = {fileset}")
