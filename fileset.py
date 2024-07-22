@@ -688,7 +688,83 @@ def validate():
 
         fileset_id = user_insert_fileset(json_object['files'], ip, conn)
         json_response['fileset'] = fileset_id
-        # TODO: handle database operations
+
+        return jsonify(json_response)
+
+    conn = db_connect()
+
+    query = f"""
+        SELECT game.id FROM game
+        JOIN engine ON game.engine = engine.id
+        WHERE gameid = '{game_metadata['gameid']}'
+        AND engineid = '{game_metadata['engineid']}'
+        AND platform = '{game_metadata['platform']}'
+        AND language = '{game_metadata['language']}'
+    """
+    games = conn.execute(query).fetchall()  
+
+    if not games:
+        json_response['error'] = error_codes['unknown']
+        del json_response['files']
+        json_response['status'] = 'unknown_variant'
+
+        fileset_id = user_insert_fileset(json_object['files'], ip, conn)
+        json_response['fileset'] = fileset_id
+
+        return jsonify(json_response)
+
+    for game in games:
+        fileset_query = f"""
+            SELECT file.id, name, size FROM file
+            JOIN fileset ON fileset.id = file.fileset
+            WHERE fileset.game = {game['id']} AND
+            (status = 'fullmatch' OR status = 'partialmatch' OR status = 'detection')
+        """
+        fileset = conn.execute(fileset_query).fetchall()  
+
+        if not fileset:
+            continue
+
+        fileset = [dict(row) for row in fileset]
+
+        file_object = json_object['files']
+        file_object.sort(key=lambda x: x['name'].lower())
+        fileset.sort(key=lambda x: x['name'].lower())
+
+        for i in range(min(len(fileset), len(file_object))):
+            status = 'ok'
+            db_file = fileset[i]
+            user_file = file_object[i]
+            filename = user_file['name'].lower()
+
+            if db_file['name'].lower() != filename:
+                if db_file['name'].lower() > filename:
+                    status = 'unknown_file'
+                else:
+                    status = 'missing'
+                    i -= 1  
+
+            elif db_file['size'] != user_file['size'] and status == 'ok':
+                status = 'size_mismatch'
+
+            if status == 'ok':
+                for checksum_data in user_file['checksums']:
+                    user_checkcode = checksum_data['type']
+                    
+                    if user_checkcode in db_file:
+                        user_checksum = checksum_data['checksum']
+                        if db_file[user_checkcode] != user_checksum:
+                            status = 'checksum_mismatch'
+                            break
+
+            if status != 'ok':
+                json_response['error'] = 1
+                fileset_id = user_insert_fileset(json_object['files'], ip, conn)
+                json_response['fileset'] = fileset_id
+
+            json_response['files'].append({'status': status, 'name': filename})
+
+        break
 
         return jsonify(json_response)
     
