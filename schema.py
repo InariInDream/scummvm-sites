@@ -3,9 +3,12 @@ import pymysql
 import random
 import string
 from datetime import datetime
+import os
 
 # Load MySQL credentials
-with open(__file__ + '/../mysql_config.json') as f:
+base_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(base_dir, 'mysql_config.json')
+with open(config_path) as f:
     mysql_cred = json.load(f)
 
 servername = mysql_cred["servername"]

@@ -5,6 +5,7 @@ Using it when testing the data insertion.
 
 import pymysql
 import json
+import os
 
 def truncate_all_tables(conn):
     tables = ["filechecksum", "queue", "history", "transactions", "file", "fileset", "game", "engine", "log"]
@@ -24,7 +25,9 @@ def truncate_all_tables(conn):
     cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
 
 if __name__ == "__main__":
-    with open(__file__ + '/../mysql_config.json') as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'mysql_config.json')
+    with open(config_path) as f:
         mysql_cred = json.load(f)
 
     servername = mysql_cred["servername"]

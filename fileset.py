@@ -7,14 +7,16 @@ from user_fileset_functions import user_calc_key, file_json_to_array, user_inser
 from pagination import create_page
 import difflib
 from pymysql.converters import escape_string
-from db_functions import find_matching_filesets, get_all_related_filesets, convert_log_text_to_links, user_integrity_check
+from db_functions import find_matching_filesets, get_all_related_filesets, convert_log_text_to_links, user_integrity_check, db_connect
 from collections import defaultdict
 
 app = Flask(__name__)
 
 secret_key = os.urandom(24)
 
-with open('mysql_config.json') as f:
+base_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(base_dir, 'mysql_config.json')
+with open(config_path) as f:
     mysql_cred = json.load(f)
 
 conn = pymysql.connect(
@@ -58,7 +60,9 @@ def fileset():
     id = request.args.get('id', default=1, type=int)
     widetable = request.args.get('widetable', default='false', type=str)
     # Load MySQL credentials from a JSON file
-    with open('mysql_config.json') as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'mysql_config.json')
+    with open(config_path) as f:
         mysql_cred = json.load(f)
 
     # Create a connection to the MySQL server
@@ -255,7 +259,9 @@ def fileset():
 
 @app.route('/fileset/<int:id>/match', methods=['GET'])
 def match_fileset_route(id):
-    with open('mysql_config.json') as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'mysql_config.json')
+    with open(config_path) as f:
         mysql_cred = json.load(f)
 
     connection = pymysql.connect(host=mysql_cred["servername"],
@@ -351,7 +357,9 @@ def merge_fileset(id):
     if request.method == 'POST':
         search_query = request.form['search']
         
-        with open('mysql_config.json') as f:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(base_dir, 'mysql_config.json')
+        with open(config_path) as f:
             mysql_cred = json.load(f)
 
         connection = pymysql.connect(
@@ -436,7 +444,9 @@ def merge_fileset(id):
 def confirm_merge(id):
     target_id = request.args.get('target_id', type=int) if request.method == 'GET' else request.form.get('target_id')
 
-    with open('mysql_config.json') as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'mysql_config.json')
+    with open(config_path) as f:
         mysql_cred = json.load(f)
 
     connection = pymysql.connect(
@@ -544,7 +554,9 @@ def execute_merge(id, source=None, target=None):
     source_id = request.form['source_id'] if not source else source
     target_id = request.form['target_id'] if not target else target
 
-    with open('mysql_config.json') as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'mysql_config.json')
+    with open(config_path) as f:
         mysql_cred = json.load(f)
 
     connection = pymysql.connect(
@@ -766,7 +778,7 @@ def validate():
 
         break
 
-        return jsonify(json_response)
+    return jsonify(json_response)
     
 @app.route('/user_games_list')
 def user_games_list():

@@ -10,7 +10,9 @@ from collections import defaultdict
 import re
 
 def db_connect():
-    with open('mysql_config.json') as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'mysql_config.json')
+    with open(config_path) as f:
         mysql_cred = json.load(f)
     
     conn = pymysql.connect(
