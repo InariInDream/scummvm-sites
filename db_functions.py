@@ -251,9 +251,14 @@ def calc_key(fileset):
 
 def calc_megakey(fileset):
     key_string = f":{fileset['platform']}:{fileset['language']}"
-    for file in fileset['rom']:
-        for key, value in file.items():
-            key_string += ':' + str(value)
+    if 'rom' in fileset.keys():
+        for file in fileset['rom']:
+            for key, value in file.items():
+                key_string += ':' + str(value)
+    elif 'files' in fileset.keys():
+        for file in fileset['files']:
+            for key, value in file.items():
+                key_string += ':' + str(value)
 
     key_string = key_string.strip(':')
     return hashlib.md5(key_string.encode()).hexdigest()

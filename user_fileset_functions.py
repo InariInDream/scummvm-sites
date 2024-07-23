@@ -44,7 +44,7 @@ def user_insert_fileset(user_fileset, ip, conn):
         log_text = "from user submitted files"
         cursor.execute("SET @fileset_time_last = %s", (int(time.time()),))
         if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, ip):
-            for file in user_fileset:
+            for file in user_fileset['files']:
                 file = file_json_to_array(file)
                 insert_file(file, detection, src, conn)
                 for key, value in file.items():
