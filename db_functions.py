@@ -98,7 +98,10 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
             cursor.execute(f"DELETE FROM file WHERE fileset = {existing_entry}")
             cursor.execute(f"UPDATE fileset SET `timestamp` = FROM_UNIXTIME(@fileset_time_last) WHERE id = {existing_entry}")
             cursor.execute(f"UPDATE fileset SET status = 'detection' WHERE id = {existing_entry} AND status = 'obsolete'")
-
+            cursor.execute(f"SELECT status FROM fileset WHERE id = {existing_entry}")
+            status = cursor.fetchone()['status']
+        if status == 'user':
+            add_usercount(existing_entry, conn)
         category_text = f"Updated Fileset:{existing_entry}"
         log_text = f"Updated Fileset:{existing_entry}, {log_text}"
         user = f'cli:{getpass.getuser()}' if username is None else username

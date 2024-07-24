@@ -783,7 +783,7 @@ def validate():
                         json_response['fileset'] = fileset_id
 
                     json_response['files'].append({'status': status, 'name': filename})
-
+                    
                 break
     except Exception as e:
         print(f"Error executing query: {e}")

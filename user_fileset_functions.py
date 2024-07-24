@@ -35,7 +35,7 @@ def user_insert_queue(user_fileset, conn):
 
 def user_insert_fileset(user_fileset, ip, conn):
     src = 'user'
-    detection = False
+    detection = True
     key = ''
     megakey = calc_megakey(user_fileset)
     with conn.cursor() as cursor:
@@ -83,7 +83,7 @@ def match_and_merge_user_filesets(id):
 
         matched_game = matching_games[0]
 
-        status = 'fullmatch'
+        status = 'full'
 
         # Convert NULL values to string with value NULL for printing
         matched_game = {k: 'NULL' if v is None else v for k, v in matched_game.items()}
@@ -138,7 +138,7 @@ def match_and_merge_user_filesets(id):
         if len(matching_games) != 1:
             continue
         matched_game = matching_games[0]
-        status = 'fullmatch'
+        status = 'full'
         matched_game = {k: ("NULL" if v is None else v) for k, v in matched_game.items()}
         category_text = f"Matched from {fileset[0]['src']}"
         log_text = f"Matched game {matched_game['engineid']}: {matched_game['gameid']}-{matched_game['platform']}-{matched_game['language']} variant {matched_game['key']}. State {status}. Fileset:{fileset[0]['id']}."
