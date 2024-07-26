@@ -141,6 +141,7 @@ def insert_file(file, detection, src, conn):
     # Find full md5, or else use first checksum value
     checksum = ""
     checksize = 5000
+    checktype = "None"
     if "md5" in file:
         checksum = file["md5"]
     else:
@@ -667,7 +668,7 @@ def handle_matched_filesets(matched_map, fileset, conn, detection, src, key, meg
                 is_full_matched == True
                 log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
                 return
-            elif status == 'partial' and count == matched_count:
+            elif (status == 'partial' or status == 'dat') and count == matched_count:
                 update_fileset_status(cursor, matched_fileset_id, 'full')
                 populate_file(fileset, matched_fileset_id, conn, detection)
                 log_matched_fileset(src, matched_fileset_id, 'full', user, conn)

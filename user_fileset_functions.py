@@ -35,14 +35,14 @@ def user_insert_queue(user_fileset, conn):
 
 def user_insert_fileset(user_fileset, ip, conn):
     src = 'user'
-    detection = True
+    detection = False
     key = ''
     megakey = calc_megakey(user_fileset)
     with conn.cursor() as cursor:
         cursor.execute("SELECT MAX(`transaction`) FROM transactions")
         transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
         log_text = "from user submitted files"
-        cursor.execute("SET @fileset_time_last = %s", (int(time.time()),))
+        cursor.execute("SET @fileset_time_last = %s", (int(time.time())))
         if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, ip):
             for file in user_fileset['files']:
                 file = file_json_to_array(file)

@@ -123,8 +123,8 @@ def fileset():
                 cursor.execute(f"SELECT game.name as 'game name', engineid, gameid, extra, platform, language FROM fileset JOIN game ON game.id = fileset.game JOIN engine ON engine.id = game.engine WHERE fileset.id = {id}")
                 result = {**result, **cursor.fetchone()}
             else:
-                result.pop('key', None)
-                result.pop('status', None)
+                # result.pop('key', None)
+                # result.pop('status', None)
                 result.pop('delete', None)
 
             for column in result.keys():
@@ -697,100 +697,40 @@ def validate():
         json_response['error'] = error_codes['no_metadata']
         del json_response['files']
         json_response['status'] = 'no_metadata'
-
-        fileset_id = user_insert_fileset(json_object['files'], ip, conn)
+        
+        fileset_id = user_insert_fileset(json_object, ip, conn)
         json_response['fileset'] = fileset_id
-
+        print(f"Response: {json_response}")
         return jsonify(json_response)
+
+    matched_map = {}
+    missing_map = {}
+    extra_map = {}
+
+    file_object = json_object['files']
+    if not file_object:
+        json_response['error'] = error_codes['empty']
+        json_response['status'] = 'empty_fileset'
+        return jsonify(json_response)
+
     try:
-        conn = db_connect()
-        print("Database connection successful")
+        matched_map, missing_map, extra_map = user_integrity_check(json_object)
     except Exception as e:
-        print(f"Error connecting to database: {e}")
-        return jsonify({'error': 'Database connection failed'}), 500
+        json_response['error'] = 1
+        json_response['status'] = 'processing_error'
+        json_response['message'] = str(e)
+        print(f"Response: {json_response}")
+        return jsonify(json_response)
 
-    query = f"""
-        SELECT game.id FROM game
-        JOIN engine ON game.engine = engine.id
-        WHERE gameid = '{game_metadata['gameid']}'
-        AND engineid = '{game_metadata['engineid']}'
-        AND platform = '{game_metadata['platform']}'
-        AND language = '{game_metadata['language']}'
-    """
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(query)
-            games = cursor.fetchall()  
+    for fileset_id, count in matched_map.items():
+        json_response['files'].append({'status': 'ok', 'fileset_id': fileset_id, 'count': count})
+        # TODO: Handle the exact file names and checksums
+    for fileset_id, count in missing_map.items():
+        json_response['files'].append({'status': 'missing', 'fileset_id': fileset_id, 'count': len(count)})
 
-            if not games:
-                json_response['error'] = error_codes['unknown']
-                del json_response['files']
-                json_response['status'] = 'unknown_variant'
-
-                fileset_id = user_insert_fileset(json_object['files'], ip, conn)
-                json_response['fileset'] = fileset_id
-
-                return jsonify(json_response)
-            # print(games)
-            for game in games:
-                fileset_query = f"""
-                    SELECT file.id, name, size FROM file
-                    JOIN fileset ON fileset.id = file.fileset
-                    WHERE fileset.game = {game['id']} AND
-                    (status = 'full' OR status = 'detection' OR status = 'partial')
-                """
-                cursor.execute(fileset_query)
-                fileset = cursor.fetchall()  
-
-                if not fileset:
-                    continue
-
-                fileset = [dict(row) for row in fileset]
-
-                file_object = json_object['files']
-                file_object.sort(key=lambda x: x['name'].lower())
-                fileset.sort(key=lambda x: x['name'].lower())
-                # print(file_object)
-                for i in range(min(len(fileset), len(file_object))):
-                    status = 'ok'
-                    db_file = fileset[i]
-                    user_file = file_object[i]
-                    filename = user_file['name'].lower()
-
-                    if db_file['name'].lower() != filename:
-                        if db_file['name'].lower() > filename:
-                            status = 'unknown_file'
-                        else:
-                            status = 'missing'
-                            i -= 1  
-
-                    elif db_file['size'] != user_file['size'] and status == 'ok':
-                        status = 'size_mismatch'
-
-                    if status == 'ok':
-                        for checksum_data in user_file['checksums']:
-                            user_checkcode = checksum_data['type']
-                            
-                            if user_checkcode in db_file:
-                                user_checksum = checksum_data['checksum']
-                                if db_file[user_checkcode] != user_checksum:
-                                    status = 'checksum_mismatch'
-                                    break
-
-                    if status != 'ok':
-                        json_response['error'] = 1
-                        fileset_id = user_insert_fileset(json_object['files'], ip, conn)
-                        json_response['fileset'] = fileset_id
-
-                    json_response['files'].append({'status': status, 'name': filename})
-                    
-                break
-    except Exception as e:
-        print(f"Error executing query: {e}")
-        return jsonify({'error': 'Query execution failed'}), 500
-    finally:
-        conn.close()
-    # print(json_response)
+    for fileset_id, count in extra_map.items():
+        json_response['files'].append({'status': 'unknown_file', 'fileset_id': fileset_id, 'count': len(count)})
+    print(f"Response: {json_response}")
     return jsonify(json_response)
     
 @app.route('/user_games_list')
