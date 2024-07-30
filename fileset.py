@@ -330,7 +330,7 @@ def match_fileset_route(id):
                 html += f"""
                 <tr>
                     <td>{fileset_id}</td>
-                    <td>{match_count}</td>
+                    <td>{len(match_count)}</td>
                     <td><a href="/fileset?id={fileset_id}">View Details</a></td>
                     <td>
                         <form method="POST" action="/fileset/{id}/merge/confirm">
@@ -667,7 +667,6 @@ def execute_merge(id, source=None, target=None):
 
 @app.route('/validate', methods=['POST'])
 def validate():
-
     error_codes = {
         "unknown": -1,
         "success": 0,
@@ -721,17 +720,38 @@ def validate():
         json_response['message'] = str(e)
         print(f"Response: {json_response}")
         return jsonify(json_response)
-
-    for fileset_id, count in matched_map.items():
-        json_response['files'].append({'status': 'ok', 'fileset_id': fileset_id, 'count': count})
-        # TODO: Handle the exact file names and checksums
+    print(f"Matched: {matched_map}")
+    matched_map = list(sorted(matched_map.items(), key=lambda x: len(x[1]), reverse=True))[0]
+    matched_id = matched_map[0]
+    # find the same id in the missing_map and extra_map
     for fileset_id, count in missing_map.items():
-        json_response['files'].append({'status': 'missing', 'fileset_id': fileset_id, 'count': len(count)})
-
+        if fileset_id == matched_id:
+            missing_map = (fileset_id, count)
+            break
+    
     for fileset_id, count in extra_map.items():
-        json_response['files'].append({'status': 'unknown_file', 'fileset_id': fileset_id, 'count': len(count)})
+        if fileset_id == matched_id:
+            extra_map = (fileset_id, count)
+            break
+    
+    for file in matched_map[1]:
+        for key, value in file.items():
+            if key == "name":
+                json_response['files'].append({'status': 'ok', 'fileset_id':matched_id, 'name': value})
+                break
+    for file in missing_map[1]:
+        for key, value in file.items():
+            if key == "name":
+                json_response['files'].append({'status': 'missing', 'fileset_id':matched_id, 'name': value})
+                break
+    for file in extra_map[1]:
+        for key, value in file.items():
+            if key == "name":
+                json_response['files'].append({'status': 'unknown_file', 'fileset_id':matched_id, 'name': value})
+                break
     print(f"Response: {json_response}")
     return jsonify(json_response)
+    
     
 @app.route('/user_games_list')
 def user_games_list():
