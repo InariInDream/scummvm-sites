@@ -238,6 +238,25 @@ def fileset():
                 cursor.execute(f"SELECT `timestamp`, category, `text`, id FROM log WHERE `text` LIKE 'Fileset:{h['oldfileset']}' ORDER BY `timestamp` DESC, id DESC")
                 logs = cursor.fetchall()
                 print(f"Logs: {logs}")
+                if h['fileset'] == h['oldfileset']:
+                    continue
+
+                if h['oldfileset'] == 0:
+                    html += "<tr>\n"
+                    html += f"<td>{h['timestamp']}</td>\n"
+                    html += f"<td>create</td>\n"
+                    html += f"<td>Created fileset <a href='fileset?id={h['fileset']}'>Fileset {h['fileset']}</a></td>\n"
+                    # html += f"<td><a href='logs?id={h['log']}'>Log {h['log']}</a></td>\n"
+                    if h['log']:
+                        cursor.execute(f"SELECT `text` FROM log WHERE id = {h['log']}")
+                        log_text = cursor.fetchone()['text']
+                        log_text = convert_log_text_to_links(log_text)
+                        html += f"<td><a href='logs?id={h['log']}'>Log {h['log']}</a>: {log_text}</td>\n"
+                    else:
+                        html += "<td>No log available</td>\n"
+                    html += "</tr>\n"
+                    continue
+
                 html += "<tr>\n"
                 html += f"<td>{h['timestamp']}</td>\n"
                 html += f"<td>merge</td>\n"
@@ -327,10 +346,12 @@ def match_fileset_route(id):
             for fileset_id, match_count in matched_map.items():
                 if fileset_id == id:
                     continue
+                cursor.execute(f"SELECT COUNT(file.id) FROM file WHERE fileset = {fileset_id}")
+                count = cursor.fetchone()['COUNT(file.id)']
                 html += f"""
                 <tr>
                     <td>{fileset_id}</td>
-                    <td>{len(match_count)}</td>
+                    <td>{len(match_count)} / {count}</td>
                     <td><a href="/fileset?id={fileset_id}">View Details</a></td>
                     <td>
                         <form method="POST" action="/fileset/{id}/merge/confirm">

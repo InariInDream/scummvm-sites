@@ -131,7 +131,7 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
         log_last = create_log(escape_string(category_text), user, escape_string(log_text), conn)
         update_history(fileset_last, fileset_last, conn, log_last)
     else:
-        update_history(fileset_last, fileset_last, conn)
+        update_history(0, fileset_last, conn)
     with conn.cursor() as cursor:
         cursor.execute(f"INSERT INTO transactions (`transaction`, fileset) VALUES ({transaction}, {fileset_last})")
 
@@ -153,7 +153,8 @@ def insert_file(file, detection, src, conn):
     if not detection:
         checktype = "None"
         detection = 0
-    query = f"INSERT INTO file (name, size, checksum, fileset, detection, detection_type, `timestamp`) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection}, '{checktype}-{checksize}', NOW())"
+    detection_type = f"{checktype}-{checksize}" if checktype != "None" else f"{checktype}"
+    query = f"INSERT INTO file (name, size, checksum, fileset, detection, detection_type, `timestamp`) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection}, '{detection_type}', NOW())"
     with conn.cursor() as cursor:
         cursor.execute(query)
 
@@ -214,7 +215,7 @@ def get_all_related_filesets(fileset_id, conn, visited=None):
     if visited is None:
         visited = set()
 
-    if fileset_id in visited:
+    if fileset_id in visited or fileset_id == 0:
         return []
     
     visited.add(fileset_id)
@@ -577,10 +578,14 @@ def process_fileset(fileset, resources, detection, src, conn, transaction_id, fi
     else:
         matched_map = matching_set(fileset, conn)
 
+    
+    insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
+    with conn.cursor() as cursor:
+        cursor.execute("SET @fileset_last = LAST_INSERT_ID()")
+        cursor.execute("SELECT LAST_INSERT_ID()")
+        fileset_last = cursor.fetchone()['LAST_INSERT_ID()']
     if matched_map:
-        handle_matched_filesets(matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
-    else:
-        insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
+        handle_matched_filesets(fileset_last, matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
 
 def insert_game_data(fileset, conn):
     engine_name = fileset["engine"]
@@ -647,7 +652,7 @@ def matching_set(fileset, conn):
                     break
     return matched_map
 
-def handle_matched_filesets(matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user):
+def handle_matched_filesets(fileset_last, matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user):
     matched_list = sorted(matched_map.items(), key=lambda x: len(x[1]), reverse=True)
     is_full_matched = False
     with conn.cursor() as cursor:
@@ -663,20 +668,20 @@ def handle_matched_filesets(matched_map, fileset, conn, detection, src, key, meg
                 is_full_matched = True
                 update_fileset_status(cursor, matched_fileset_id, 'full' if src != "dat" else "partial")
                 populate_file(fileset, matched_fileset_id, conn, detection)
-                log_matched_fileset(src, matched_fileset_id, 'full' if src != "dat" else "partial", user, conn)
+                log_matched_fileset(src, fileset_last, matched_fileset_id, 'full' if src != "dat" else "partial", user, conn)
             elif status == 'full' and len(fileset['rom']) == count:
                 is_full_matched == True
-                log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
+                log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
                 return
             elif (status == 'partial' or status == 'dat') and count == len(matched_count):
                 update_fileset_status(cursor, matched_fileset_id, 'full')
                 populate_file(fileset, matched_fileset_id, conn, detection)
-                log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
+                log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
             elif status == 'scan' and count == len(matched_count):
-                log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
+                log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
                 return
             elif src == 'dat':
-                log_matched_fileset(src, matched_fileset_id, 'partial matched', user, conn)
+                log_matched_fileset(src, fileset_last, matched_fileset_id, 'partial matched', user, conn)
             else:
                 insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
 
@@ -728,11 +733,11 @@ def insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_
                 if key not in ["name", "size"]:
                     insert_filechecksum(file, key, conn)
 
-def log_matched_fileset(src, fileset_id, state, user, conn):
+def log_matched_fileset(src, fileset_last, fileset_id, state, user, conn):
     category_text = f"Matched from {src}"
     log_text = f"Matched Fileset:{fileset_id}. State {state}."
     log_last = create_log(escape_string(category_text), user, escape_string(log_text), conn)
-    update_history(fileset_id, fileset_id, conn, log_last)
+    update_history(fileset_last, fileset_id, conn, log_last)
 
 def finalize_fileset_insertion(conn, transaction_id, src, filepath, author, version, source_status, user):
     with conn.cursor() as cursor:
@@ -850,13 +855,13 @@ def user_integrity_check(data):
             cursor.execute(f"SELECT COUNT(file.id) FROM file WHERE fileset = {matched_fileset_id}")
             count = cursor.fetchone()['COUNT(file.id)']
             if status == "full" and count == matched_count:
-                log_matched_fileset(src, matched_fileset_id, 'full', user, conn)
+                log_matched_fileset(src, matched_fileset_id, matched_fileset_id, 'full', user, conn)
             elif status == "partial" and count == matched_count:
                 populate_file(data, matched_fileset_id, conn, None, src)
-                log_matched_fileset(src, matched_fileset_id, 'partial', user, conn)
+                log_matched_fileset(src, matched_fileset_id, matched_fileset_id, 'partial', user, conn)
             elif status == "user" and count == matched_count:
                 add_usercount(matched_fileset_id, conn)
-                log_matched_fileset(src, matched_fileset_id, 'user', user, conn)
+                log_matched_fileset(src, matched_fileset_id, matched_fileset_id, 'user', user, conn)
             else:
                 insert_new_fileset(data, conn, None, src, key, None, transaction_id, log_text, user)
             finalize_fileset_insertion(conn, transaction_id, src, None, user, 0, source_status, user)
