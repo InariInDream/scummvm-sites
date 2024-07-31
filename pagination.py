@@ -154,11 +154,14 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
                         # Filter textbox
                         filter_value = request.args.get(key, "")
 
-            if filename in ['games_list', 'user_games_list']:
-                html += f"<tr class='games_list' onclick='hyperlink(\"fileset?id={row['fileset']}\")'>\n"
+            if records_table != "log":
+                fileset_id = row['fileset']
+                html += f"<tr class='games_list' onclick='hyperlink(\"fileset?id={fileset_id}\")'>\n"
+                html += f"<td><a href='fileset?id={fileset_id}'>{counter}.</a></td>\n"
             else:
                 html += "<tr>\n"
-            html += f"<td>{counter}.</td>\n"
+                html += f"<td>{counter}.</td>\n"
+
             for key, value in row.items():
                 if key == 'fileset':
                     continue

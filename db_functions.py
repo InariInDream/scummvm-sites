@@ -641,7 +641,7 @@ def matching_set(fileset, conn):
                     JOIN file f ON fs.id = f.fileset
                     JOIN filechecksum fc ON f.id = fc.file
                     WHERE fc.checksum = '{checksum}' AND fc.checktype = 'md5'
-                    AND f.size > {size}
+                    AND fc.checksize > {size}
                     AND fs.status = 'detection'
                 """
                 cursor.execute(query)
