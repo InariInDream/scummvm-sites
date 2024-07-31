@@ -857,7 +857,7 @@ def fileset_search():
     """
     order = "ORDER BY fileset.id"
     filters = {
-        "fileset": "fileset",
+        "id": "fileset",
         "name": "game",
         "extra": "game",
         "platform": "game",
