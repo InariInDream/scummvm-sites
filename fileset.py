@@ -734,14 +734,21 @@ def validate():
         return jsonify(json_response)
 
     try:
-        matched_map, missing_map, extra_map = user_integrity_check(json_object)
+        matched_map, missing_map, extra_map = user_integrity_check(json_object, ip)
     except Exception as e:
-        json_response['error'] = 1
+        json_response['error'] = -1
         json_response['status'] = 'processing_error'
+        json_response['fileset'] = 'unknown_fileset'
         json_response['message'] = str(e)
         print(f"Response: {json_response}")
         return jsonify(json_response)
     print(f"Matched: {matched_map}")
+    print(len(matched_map))
+    if (len(matched_map) == 0):
+        json_response['error'] = error_codes['unknown']
+        json_response['status'] = 'unknown_fileset'
+        json_response['fileset'] = 'unknown_fileset'
+        return jsonify(json_response)
     matched_map = list(sorted(matched_map.items(), key=lambda x: len(x[1]), reverse=True))[0]
     matched_id = matched_map[0]
     # find the same id in the missing_map and extra_map

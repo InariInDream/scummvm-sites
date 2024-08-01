@@ -461,7 +461,8 @@ def merge_filesets(detection_id, dat_id):
         conn.rollback()
         print(f"Error merging filesets: {e}")
     finally:
-        conn.close()
+        # conn.close()
+        pass
 
     return history_last
 
@@ -725,8 +726,8 @@ def populate_file(fileset, fileset_id, conn, detection):
             else:
                 cursor.execute(f"UPDATE file SET detection_type = 'None' WHERE id = {file_id}")
 
-def insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user):
-    if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=user):
+def insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user, ip=''):
+    if insert_fileset(src, detection, key, megakey, transaction_id, log_text, conn, username=user, ip=ip):
         for file in fileset["rom"]:
             insert_file(file, detection, src, conn)
             for key, value in file.items():
@@ -747,9 +748,9 @@ def finalize_fileset_insertion(conn, transaction_id, src, filepath, author, vers
         if src != 'user':
             log_text = f"Completed loading DAT file, filename {filepath}, size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}. Number of filesets: {fileset_insertion_count}. Transaction: {transaction_id}"
             create_log(escape_string(category_text), user, escape_string(log_text), conn)
-    conn.close()
+    # conn.close()
 
-def user_integrity_check(data):
+def user_integrity_check(data, ip):
     src = "user"
     source_status = src
     new_files = []
@@ -823,7 +824,7 @@ def user_integrity_check(data):
                         if target_file['name'] not in matched_names:
                             missing_set.add(target_file['name'])
                         else:
-                            missing_set.remove(target_file['name'])
+                            missing_set.discard(target_file['name'])
                     else:
                         matched_names.add(target_file['name'])  
                 
@@ -863,7 +864,7 @@ def user_integrity_check(data):
                 add_usercount(matched_fileset_id, conn)
                 log_matched_fileset(src, matched_fileset_id, matched_fileset_id, 'user', user, conn)
             else:
-                insert_new_fileset(data, conn, None, src, key, None, transaction_id, log_text, user)
+                insert_new_fileset(data, conn, None, src, key, None, transaction_id, log_text, user, ip)
             finalize_fileset_insertion(conn, transaction_id, src, None, user, 0, source_status, user)
     except Exception as e:
         conn.rollback()
@@ -872,9 +873,13 @@ def user_integrity_check(data):
         category_text = f"Uploaded from {src}"
         log_text = f"Completed loading file, State {source_status}. Transaction: {transaction_id}"
         create_log(escape_string(category_text), user, escape_string(log_text), conn)
-        conn.close()
+        # conn.close()
     return matched_map, missing_map, extra_map
 
 def add_usercount(fileset, conn):
     with conn.cursor() as cursor:
         cursor.execute(f"UPDATE fileset SET user_count = COALESCE(user_count, 0) + 1 WHERE id = {fileset}")
+        cursor.execute(f"SELECT user_count from fileset WHERE id = {fileset}")
+        count = cursor.fetchone()['user_count']
+        if count >= 3:
+            cursor.execute(f"UPDATE fileset SET status = 'ReadyForReview' WHERE id = {fileset}")
