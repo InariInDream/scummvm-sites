@@ -78,6 +78,9 @@ def insert_fileset(src, detection, key, megakey, transaction, log_text, conn, ip
     if detection:
         status = "detection"
         game = "@game_last"
+        
+    if status == "user":
+        game = "@game_last"
 
     # Check if key/megakey already exists, if so, skip insertion (no quotes on purpose)
     if detection:
@@ -750,7 +753,7 @@ def finalize_fileset_insertion(conn, transaction_id, src, filepath, author, vers
             create_log(escape_string(category_text), user, escape_string(log_text), conn)
     # conn.close()
 
-def user_integrity_check(data, ip):
+def user_integrity_check(data, ip, game_metadata=None):
     src = "user"
     source_status = src
     new_files = []
@@ -845,8 +848,21 @@ def user_integrity_check(data, ip):
                 
                 for extra in extra_set:
                     extra_map[fileset_id].append({'name': extra})
-            
+            if game_metadata:
+                platform = game_metadata['platform']
+                lang = game_metadata['language']
+                gameid = game_metadata['gameid']
+                engineid = game_metadata['engineid']
+                extra_info = game_metadata['extra']
+                engine_name = " "
+                title = " "
+                insert_game(engine_name, engineid, title, gameid, extra_info, platform, lang, conn)
+                
             # handle different scenarios
+            if len(matched_map) == 0:   
+                insert_new_fileset(data, conn, None, src, key, None, transaction_id, log_text, user, ip)
+                return matched_map, missing_map, extra_map
+
             matched_list = sorted(matched_map.items(), key=lambda x: len(x[1]), reverse=True)
             most_matched = matched_list[0] 
             matched_fileset_id, matched_count = most_matched[0], most_matched[1]   
