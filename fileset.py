@@ -734,7 +734,7 @@ def validate():
         return jsonify(json_response)
 
     try:
-        matched_map, missing_map, extra_map = user_integrity_check(json_object, ip)
+        matched_map, missing_map, extra_map = user_integrity_check(json_object, ip, game_metadata)
     except Exception as e:
         json_response['error'] = -1
         json_response['status'] = 'processing_error'
@@ -783,32 +783,8 @@ def validate():
     
 @app.route('/user_games_list')
 def user_games_list():
-    filename = "user_games_list"
-    records_table = "fileset"
-    select_query = """
-    SELECT engineid, gameid, extra, platform, language, game.name,
-    status, fileset.id as fileset
-    FROM fileset
-    LEFT JOIN game ON game.id = fileset.game
-    LEFT JOIN engine ON engine.id = game.engine
-    WHERE status = 'user'
-    """
-    order = "ORDER BY gameid"
-    filters = {
-        "engineid": "engine",
-        "gameid": "game",
-        "extra": "game",
-        "platform": "game",
-        "language": "game",
-        "name": "game",
-        "status": "fileset"
-    }
-    mapping = {
-        'engine.id': 'game.engine',
-        'game.id': 'fileset.game',
-    }
-    return render_template_string(create_page(filename, 200, records_table, select_query, order, filters, mapping))
-
+    url = f"fileset_search?extra=&platform=&language=&megakey=&status=user"
+    return redirect(url)
 
 @app.route('/games_list')
 def games_list():
@@ -857,7 +833,7 @@ def fileset_search():
     filename = "fileset_search"
     records_table = "fileset"
     select_query = """
-    SELECT extra, platform, language, game.name, megakey,
+    SELECT extra, platform, language, game.gameid, megakey,
     status, fileset.id as fileset
     FROM fileset
     JOIN game ON game.id = fileset.game
