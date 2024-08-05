@@ -786,6 +786,11 @@ def user_games_list():
     url = f"fileset_search?extra=&platform=&language=&megakey=&status=user"
     return redirect(url)
 
+@app.route('/ready_for_review') 
+def ready_for_review():
+    url = f"fileset_search?extra=&platform=&language=&megakey=&status=ReadyForReview"
+    return redirect(url)
+
 @app.route('/games_list')
 def games_list():
     filename = "games_list"
