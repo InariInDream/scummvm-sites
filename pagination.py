@@ -74,7 +74,7 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
         else:
             cursor.execute(f"SELECT COUNT(id) FROM {records_table}")
             num_of_results = cursor.fetchone()['COUNT(id)']
-            
+        # TODO: Recalculate num_of_results if filters are applied
         num_of_pages = (num_of_results + results_per_page - 1) // results_per_page
         print(f"Num of results: {num_of_results}, Num of pages: {num_of_pages}")
         if num_of_results == 0:

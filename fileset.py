@@ -7,7 +7,7 @@ from user_fileset_functions import user_calc_key, file_json_to_array, user_inser
 from pagination import create_page
 import difflib
 from pymysql.converters import escape_string
-from db_functions import find_matching_filesets, get_all_related_filesets, convert_log_text_to_links, user_integrity_check, db_connect
+from db_functions import find_matching_filesets, get_all_related_filesets, convert_log_text_to_links, user_integrity_check, db_connect,create_log
 from collections import defaultdict
 
 app = Flask(__name__)
@@ -43,7 +43,7 @@ def index():
     <ul>
         <li><a href="{{ url_for('fileset') }}">Fileset</a></li>
         <li><a href="{{ url_for('user_games_list') }}">User Games List</a></li>
-        <li><a href="{{ url_for('games_list') }}">Games List</a></li>
+        <li><a href="{{ url_for('ready_for_review') }}">Ready for review</a></li>
         <li><a href="{{ url_for('fileset_search') }}">Fileset Search</a></li>
     </ul>
     <h2>Logs</h2>
@@ -111,9 +111,13 @@ def fileset():
             <h2><u>Fileset: {id}</u></h2>
             <table>
             """
-            html += f"<td><button onclick=\"location.href='/fileset/{id}/merge'\">Manual Merge</button></td>"
-            html += f"<td><button onclick=\"location.href='/fileset/{id}/match'\">Match and Merge</button></td>"
-
+            html += f"<button type='button' onclick=\"location.href='/fileset/{id}/merge'\">Manual Merge</button>"
+            html += f"<button type='button' onclick=\"location.href='/fileset/{id}/match'\">Match and Merge</button>"
+            html += f"""
+                    <form action="/fileset/{id}/mark_full" method="post" style="display:inline;">
+                        <button type='submit'>Mark as full</button>
+                    </form>
+                    """
             cursor.execute(f"SELECT * FROM fileset WHERE id = {id}")
             result = cursor.fetchone()
             print(result)
@@ -685,6 +689,23 @@ def execute_merge(id, source=None, target=None):
 
     finally:
         connection.close()
+        
+@app.route('/fileset/<int:id>/mark_full', methods=['POST'])
+def mark_as_full(id):
+    try:
+        conn = db_connect()
+        with conn.cursor() as cursor:
+            update_query = f"UPDATE fileset SET status = 'full' WHERE id = {id}"
+            cursor.execute(update_query)
+            create_log("Manual from Web", "Dev", f"Marked Fileset:{id} as full", conn)
+            conn.commit()
+    except Exception as e:
+        print(f"Error updating fileset status: {e}")
+        return jsonify({'error': 'Failed to mark fileset as full'}), 500
+    finally:
+        conn.close()
+
+    return redirect(f'/fileset?id={id}')
 
 @app.route('/validate', methods=['POST'])
 def validate():
