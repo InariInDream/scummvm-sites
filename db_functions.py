@@ -556,7 +556,8 @@ def match_fileset(data_arr, username=None):
 
     with conn.cursor() as cursor:
         cursor.execute("SELECT MAX(`transaction`) FROM transactions")
-        transaction_id = cursor.fetchone()['MAX(`transaction`)'] + 1
+        transaction_id = cursor.fetchone()['MAX(`transaction`)']
+        transaction_id = transaction_id + 1 if transaction_id else 1
 
     category_text = f"Uploaded from {src}"
     log_text = f"Started loading DAT file, size {os.path.getsize(filepath)}, author {author}, version {version}. State {source_status}. Transaction: {transaction_id}"
@@ -611,7 +612,7 @@ def find_matching_filesets(fileset, conn, status):
         for file in fileset["rom"]:
             matched_set = set()
             for key, value in file.items():
-                if key not in ["name", "size"]:
+                if key not in ["name", "size", "sha1", "crc"]:
                     checksum = file[key]
                     checktype = key
                     checksize, checktype, checksum = get_checksum_props(checktype, checksum)
@@ -734,7 +735,7 @@ def insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_
         for file in fileset["rom"]:
             insert_file(file, detection, src, conn)
             for key, value in file.items():
-                if key not in ["name", "size"]:
+                if key not in ["name", "size", "sha1", "crc"]:
                     insert_filechecksum(file, key, conn)
 
 def log_matched_fileset(src, fileset_last, fileset_id, state, user, conn):

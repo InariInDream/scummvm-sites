@@ -600,7 +600,7 @@ def execute_merge(id, source=None, target=None):
             cursor.execute(f"SELECT * FROM fileset WHERE id = {target_id}")
             target_fileset = cursor.fetchone()
 
-            if source_fileset['src'] == 'detection':
+            if source_fileset['status'] == 'detection':
                 cursor.execute(f"""
                 UPDATE fileset SET
                     game = '{source_fileset['game']}',
@@ -633,11 +633,10 @@ def execute_merge(id, source=None, target=None):
                         INSERT INTO filechecksum (file, checksize, checktype, checksum)
                         VALUES ({new_file_id}, '{checksum['checksize']}', '{checksum['checktype']}', '{checksum['checksum']}')
                         """)
-
-            elif source_fileset['src'] == 'scan':
+            elif source_fileset['status'] in ['scan', 'dat']:
                 cursor.execute(f"""
                 UPDATE fileset SET
-                    status = '{source_fileset['status']}',
+                    status = '{source_fileset['status'] if source_fileset['status'] != 'dat' else "partial"}',
                     `key` = '{source_fileset['key']}',
                     `timestamp` = '{source_fileset['timestamp']}'
                 WHERE id = {target_id}
