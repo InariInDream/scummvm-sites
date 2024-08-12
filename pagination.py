@@ -63,16 +63,15 @@ def create_page(filename, results_per_page, records_table, select_query, order, 
                     if table == records_table:
                         continue
                     from_query += f" JOIN {table} ON {get_join_columns(records_table, table, mapping)}"
-
-            cursor.execute(f"SELECT COUNT({records_table}.id) AS count FROM {records_table} {condition}")
+            cursor.execute(f"SELECT COUNT({records_table}.id) AS count FROM {from_query} {condition}")
             num_of_results = cursor.fetchone()['count']
             
         elif "JOIN" in records_table:
             first_table = records_table.split(" ")[0]
-            cursor.execute(f"SELECT COUNT({first_table}.id) FROM {records_table} {condition}")
+            cursor.execute(f"SELECT COUNT({first_table}.id) FROM {records_table}")
             num_of_results = cursor.fetchone()[f'COUNT({first_table}.id)']
         else:
-            cursor.execute(f"SELECT COUNT(id) FROM {records_table} {condition}")
+            cursor.execute(f"SELECT COUNT(id) FROM {records_table}")
             num_of_results = cursor.fetchone()['COUNT(id)']
 
         num_of_pages = (num_of_results + results_per_page - 1) // results_per_page

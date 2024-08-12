@@ -866,15 +866,17 @@ def fileset_search():
     order = "ORDER BY fileset.id"
     filters = {
         "id": "fileset",
-        "name": "game",
+        "gameid": "game",
         "extra": "game",
         "platform": "game",
         "language": "game",
         "megakey": "fileset",
         "status": "fileset"
     }
-    return render_template_string(create_page(filename, 25, records_table, select_query, order, filters))
-
+    mapping = {
+        'game.id': 'fileset.game',
+    }
+    return render_template_string(create_page(filename, 25, records_table, select_query, order, filters, mapping))
 
 
 if __name__ == '__main__':
