@@ -634,9 +634,10 @@ def find_matching_filesets(fileset, conn, status):
     return matched_map
 
 def matching_set(fileset, conn):
-    matched_map = defaultdict(int)
+    matched_map = defaultdict(list)
     with conn.cursor() as cursor:
         for file in fileset["rom"]:
+            matched_set = set()
             if "md5" in file:
                 checksum = file["md5"]
                 size = file["size"]
@@ -653,8 +654,9 @@ def matching_set(fileset, conn):
                 records = cursor.fetchall()
                 if records:
                     for record in records:
-                        matched_map[record['fileset_id']] += 1
-                    break
+                        matched_set.add(record['fileset_id'])
+            for id in matched_set:
+                matched_map[id].append(file)
     return matched_map
 
 def handle_matched_filesets(fileset_last, matched_map, fileset, conn, detection, src, key, megakey, transaction_id, log_text, user):
@@ -711,7 +713,7 @@ def populate_file(fileset, fileset_id, conn, detection):
                 target_files_dict[target_file['id']] = f"{checksum['checktype']}-{checksum['checksize']}"
         for file in fileset['rom']:
             file_exists = False
-            cursor.execute(f"INSERT INTO file (name, size, checksum, fileset, detection, `timestamp`) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{file['md5']}', {fileset_id}, {0}, NOW())")
+            cursor.execute(f"INSERT INTO file (name, size, checksum, fileset, detection, `timestamp`) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{file['md5'] if file.get('md5') is not None else 'None'}', {fileset_id}, {0}, NOW())")
             cursor.execute("SET @file_last = LAST_INSERT_ID()")
             cursor.execute("SELECT @file_last AS file_id")
             file_id = cursor.fetchone()['file_id']
