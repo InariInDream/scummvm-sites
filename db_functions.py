@@ -677,20 +677,18 @@ def handle_matched_filesets(fileset_last, matched_map, fileset, conn, detection,
                 populate_file(fileset, matched_fileset_id, conn, detection)
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full' if src != "dat" else "partial", user, conn)
             elif status == 'full' and len(fileset['rom']) == count:
-                is_full_matched == True
+                is_full_matched = True
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
                 return
-            elif (status == 'partial' or status == 'dat') and count == len(matched_count):
+            elif (status == 'partial') and count == len(matched_count):
+                is_full_matched = True
                 update_fileset_status(cursor, matched_fileset_id, 'full')
                 populate_file(fileset, matched_fileset_id, conn, detection)
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
             elif status == 'scan' and count == len(matched_count):
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
-                return
             elif src == 'dat':
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'partial matched', user, conn)
-            else:
-                insert_new_fileset(fileset, conn, detection, src, key, megakey, transaction_id, log_text, user)
 
 def update_fileset_status(cursor, fileset_id, status):
     cursor.execute(f"""
