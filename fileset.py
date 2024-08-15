@@ -159,7 +159,22 @@ def fileset():
             # Table
             html += "<table>\n"
 
-            cursor.execute(f"SELECT file.id, name, size, checksum, detection, detection_type, `timestamp` FROM file WHERE fileset = {id}")
+            sort = request.args.get('sort')
+            order = ''
+            md5_columns = ['md5-t-5000', 'md5-0', 'md5-5000', 'md5-1M']
+            share_columns = ['name', 'size', 'checksum', 'detection', 'detection_type', 'timestamp']
+
+            if sort:
+                column = sort.split('-')[0]
+                valid_columns = share_columns + md5_columns
+                print(column, valid_columns)
+                if column in valid_columns:
+                    order = f"ORDER BY {column}"
+                    if 'desc' in sort:
+                        order += " DESC"
+            columns_to_select = "file.id, name, size, checksum, detection, detection_type, `timestamp`"
+            columns_to_select += ", ".join(md5_columns)
+            cursor.execute(f"SELECT file.id, name, size, checksum, detection, detection_type, `timestamp` FROM file WHERE fileset = {id} {order}")
             result = cursor.fetchall()
 
             all_columns = list(result[0].keys()) if result else []
