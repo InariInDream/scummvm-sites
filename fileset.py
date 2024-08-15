@@ -144,17 +144,10 @@ def fileset():
 
             # Files in the fileset
             html += "<h3>Files in the fileset</h3>"
-            # delete button
-            html += "<form method='POST'>"
-            html += "<input type='hidden' name='delete' value='true' />"
-            html += "<input type='submit' value='Delete Selected Files' />"
-            html += "<table>\n"
-
-            # Hidden inputs for preserving other parameters
+            html += "<form>"
             for k, v in request.args.items():
                 if k != 'widetable':
                     html += f"<input type='hidden' name='{k}' value='{v}'>"
-
             if widetable == 'true':
                 html += "<input class='hidden' type='text' name='widetable' value='false' />"
                 html += "<input type='submit' value='Hide extra checksums' />"
@@ -215,9 +208,9 @@ def fileset():
             sortable_columns = share_columns + list(temp_set)
 
             for column in sortable_columns:
-                if column != 'id':
+                if column not in ['id']:
                     vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'sort'])
-                    sort_link = column
+                    sort_link = f"{column}"
                     if sort == column:
                         sort_link += "-desc"
                     html += f"<th><a href='/fileset?id={id}&{vars}&sort={sort_link}'>{column}</a></th>\n"
@@ -227,7 +220,7 @@ def fileset():
             for row in result:
                 html += "<tr>\n"
                 html += f"<td>{counter}.</td>\n"
-                html += f"<td><input type='checkbox' name='files_to_delete' value='{row['id']}' /></td>\n"  # Checkbox for deletion
+                html += f"<td><input type='checkbox' name='file_ids' value='{row['id']}' /></td>\n"  # Checkbox for selecting file
                 for column in all_columns:
                     if column != 'id':
                         value = row.get(column, '')
