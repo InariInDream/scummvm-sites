@@ -167,13 +167,14 @@ def fileset():
             if sort:
                 column = sort.split('-')[0]
                 valid_columns = share_columns + md5_columns
-                print(column, valid_columns)
                 if column in valid_columns:
                     order = f"ORDER BY {column}"
                     if 'desc' in sort:
                         order += " DESC"
+
             columns_to_select = "file.id, name, size, checksum, detection, detection_type, `timestamp`"
             columns_to_select += ", ".join(md5_columns)
+            print(f"SELECT file.id, name, size, checksum, detection, detection_type, `timestamp` FROM file WHERE fileset = {id} {order}")
             cursor.execute(f"SELECT file.id, name, size, checksum, detection, detection_type, `timestamp` FROM file WHERE fileset = {id} {order}")
             result = cursor.fetchall()
 
@@ -203,15 +204,23 @@ def fileset():
             # Generate table header
             html += "<tr>\n"
             html += "<th/>"  # Numbering column
-            for column in all_columns:
+            html += "<th>Select</th>"  # Checkbox column
+            sortable_columns = share_columns + list(temp_set)
+
+            for column in sortable_columns:
                 if column != 'id':
-                    html += f"<th>{column}</th>\n"
+                    vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'sort'])
+                    sort_link = column
+                    if sort == column:
+                        sort_link += "-desc"
+                    html += f"<th><a href='/fileset?id={id}&{vars}&sort={sort_link}'>{column}</a></th>\n"
             html += "</tr>\n"
 
             # Generate table rows
             for row in result:
                 html += "<tr>\n"
                 html += f"<td>{counter}.</td>\n"
+                html += f"<td><input type='checkbox' name='files_to_delete' value='{row['id']}' /></td>\n"  # Checkbox for deletion
                 for column in all_columns:
                     if column != 'id':
                         value = row.get(column, '')
@@ -896,6 +905,20 @@ def fileset_search():
     }
     return render_template_string(create_page(filename, 25, records_table, select_query, order, filters, mapping))
 
+@app.route('/delete_files', methods=['POST'])
+def delete_files():
+    file_ids = request.form.getlist('file_ids')
+    if file_ids:
+        # Convert the list to comma-separated string for SQL
+        ids_to_delete = ",".join(file_ids)
+        connection = db_connect()
+        with connection.cursor() as cursor:
+            # SQL statements to delete related records
+            cursor.execute(f"DELETE FROM filechecksum WHERE file IN ({ids_to_delete})")
+            cursor.execute(f"DELETE FROM file WHERE id IN ({ids_to_delete})")
+
+            # Commit the deletions
+            connection.commit()
 
 if __name__ == '__main__':
     app.secret_key = secret_key
