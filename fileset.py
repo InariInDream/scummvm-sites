@@ -144,10 +144,17 @@ def fileset():
 
             # Files in the fileset
             html += "<h3>Files in the fileset</h3>"
-            html += "<form>"
+            # delete button
+            html += "<form method='POST'>"
+            html += "<input type='hidden' name='delete' value='true' />"
+            html += "<input type='submit' value='Delete Selected Files' />"
+            html += "<table>\n"
+
+            # Hidden inputs for preserving other parameters
             for k, v in request.args.items():
                 if k != 'widetable':
                     html += f"<input type='hidden' name='{k}' value='{v}'>"
+
             if widetable == 'true':
                 html += "<input class='hidden' type='text' name='widetable' value='false' />"
                 html += "<input type='submit' value='Hide extra checksums' />"
@@ -230,7 +237,10 @@ def fileset():
                             html += f"<td>{value}</td>\n"
                 html += "</tr>\n"
                 counter += 1
+
             html += "</table>\n"
+            html += "<input type='submit' value='Delete Selected Files' />"
+            html += "</form>\n"
 
             # Generate the HTML for the developer actions
             html += "<h3>Developer Actions</h3>"
