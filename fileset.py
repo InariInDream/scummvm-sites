@@ -200,7 +200,10 @@ def fileset():
                 for column in all_columns:
                     if column != 'id':
                         value = row.get(column, '')
-                        html += f"<td>{value}</td>\n"
+                        if column == row.get('detection_type') and row.get('detection') == 1:
+                            html += f"<td style='background-color: yellow;'>{value}</td>\n"
+                        else:
+                            html += f"<td>{value}</td>\n"
                 html += "</tr>\n"
                 counter += 1
             html += "</table>\n"
