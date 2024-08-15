@@ -144,10 +144,17 @@ def fileset():
 
             # Files in the fileset
             html += "<h3>Files in the fileset</h3>"
-            html += "<form>"
+            # delete button
+            html += "<form method='POST'>"
+            html += "<input type='hidden' name='delete' value='true' />"
+            html += "<input type='submit' value='Delete Selected Files' />"
+            html += "<table>\n"
+
+            # Hidden inputs for preserving other parameters
             for k, v in request.args.items():
                 if k != 'widetable':
                     html += f"<input type='hidden' name='{k}' value='{v}'>"
+
             if widetable == 'true':
                 html += "<input class='hidden' type='text' name='widetable' value='false' />"
                 html += "<input type='submit' value='Hide extra checksums' />"
@@ -203,15 +210,23 @@ def fileset():
             # Generate table header
             html += "<tr>\n"
             html += "<th/>"  # Numbering column
-            for column in all_columns:
-                if column != 'id':
-                    html += f"<th>{column}</th>\n"
+            html += "<th>Select</th>\n"  # New column for selecting files
+            sortable_columns = share_columns + list(temp_set)
+
+            for column in sortable_columns:
+                if column not in ['id']:
+                    vars = "&".join([f"{k}={v}" for k, v in request.args.items() if k != 'sort'])
+                    sort_link = f"{column}"
+                    if sort == column:
+                        sort_link += "-desc"
+                    html += f"<th><a href='/fileset?id={id}&{vars}&sort={sort_link}'>{column}</a></th>\n"
             html += "</tr>\n"
 
             # Generate table rows
             for row in result:
                 html += "<tr>\n"
                 html += f"<td>{counter}.</td>\n"
+                html += f"<td><input type='checkbox' name='file_ids' value='{row['id']}' /></td>\n"  # Checkbox for selecting file
                 for column in all_columns:
                     if column != 'id':
                         value = row.get(column, '')
@@ -221,7 +236,10 @@ def fileset():
                             html += f"<td>{value}</td>\n"
                 html += "</tr>\n"
                 counter += 1
+
             html += "</table>\n"
+            html += "<input type='submit' value='Delete Selected Files' />"
+            html += "</form>\n"
 
             # Generate the HTML for the developer actions
             html += "<h3>Developer Actions</h3>"
@@ -896,6 +914,20 @@ def fileset_search():
     }
     return render_template_string(create_page(filename, 25, records_table, select_query, order, filters, mapping))
 
+@app.route('/delete_files', methods=['POST'])
+def delete_files():
+    file_ids = request.form.getlist('file_ids')
+    if file_ids:
+        # Convert the list to comma-separated string for SQL
+        ids_to_delete = ",".join(file_ids)
+        connection = db_connect()
+        with connection.cursor() as cursor:
+            # SQL statements to delete related records
+            cursor.execute(f"DELETE FROM filechecksum WHERE file IN ({ids_to_delete})")
+            cursor.execute(f"DELETE FROM file WHERE id IN ({ids_to_delete})")
+
+            # Commit the deletions
+            connection.commit()
 
 if __name__ == '__main__':
     app.secret_key = secret_key
