@@ -156,6 +156,7 @@ def fileset():
                 html += "<input type='submit' value='Expand Table' />"
             html += "</form>"
 
+            html += f"""<form method="POST" action="{url_for('delete_files', id=id)}">"""
             # Table
             html += "<table>\n"
 
@@ -908,8 +909,8 @@ def fileset_search():
     }
     return render_template_string(create_page(filename, 25, records_table, select_query, order, filters, mapping))
 
-@app.route('/delete_files', methods=['POST'])
-def delete_files():
+@app.route('/delete_files/<int:id>', methods=['POST'])
+def delete_files(id):
     file_ids = request.form.getlist('file_ids')
     if file_ids:
         # Convert the list to comma-separated string for SQL
@@ -922,6 +923,7 @@ def delete_files():
 
             # Commit the deletions
             connection.commit()
+    return redirect(url_for('fileset', id=id))
 
 if __name__ == '__main__':
     app.secret_key = secret_key
