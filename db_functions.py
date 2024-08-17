@@ -676,20 +676,28 @@ def handle_matched_filesets(fileset_last, matched_map, fileset, conn, detection,
                 update_fileset_status(cursor, matched_fileset_id, 'full' if src != "dat" else "partial")
                 populate_file(fileset, matched_fileset_id, conn, detection)
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full' if src != "dat" else "partial", user, conn)
+                delete_original_fileset(fileset_last, conn)
             elif status == 'full' and len(fileset['rom']) == count:
                 is_full_matched = True
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
+                delete_original_fileset(fileset_last, conn)
                 return
             elif (status == 'partial') and count == len(matched_count):
                 is_full_matched = True
                 update_fileset_status(cursor, matched_fileset_id, 'full')
                 populate_file(fileset, matched_fileset_id, conn, detection)
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
+                delete_original_fileset(fileset_last, conn)
             elif status == 'scan' and count == len(matched_count):
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'full', user, conn)
             elif src == 'dat':
                 log_matched_fileset(src, fileset_last, matched_fileset_id, 'partial matched', user, conn)
 
+def delete_original_fileset(fileset_id, conn):
+    with conn.cursor() as cursor:
+        cursor.execute(f"DELETE FROM file WHERE fileset = {fileset_id}")
+        cursor.execute(f"DELETE FROM fileset WHERE id = {fileset_id}")
+        
 def update_fileset_status(cursor, fileset_id, status):
     cursor.execute(f"""
         UPDATE fileset SET 
