@@ -58,7 +58,7 @@ def index():
 @app.route('/fileset', methods=['GET', 'POST'])
 def fileset():
     id = request.args.get('id', default=1, type=int)
-    widetable = request.args.get('widetable', default='false', type=str)
+    widetable = request.args.get('widetable', default='partial', type=str)
     # Load MySQL credentials from a JSON file
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(base_dir, 'mysql_config.json')
@@ -148,12 +148,12 @@ def fileset():
             for k, v in request.args.items():
                 if k != 'widetable':
                     html += f"<input type='hidden' name='{k}' value='{v}'>"
-            if widetable == 'true':
-                html += "<input class='hidden' type='text' name='widetable' value='false' />"
-                html += "<input type='submit' value='Hide extra checksums' />"
-            else:
-                html += "<input class='hidden' type='text' name='widetable' value='true' />"
+            if widetable == 'partial':
+                html += "<input class='hidden' name='widetable' value='full' />"
                 html += "<input type='submit' value='Expand Table' />"
+            else:
+                html += "<input class='hidden' name='widetable' value='partial' />"
+                html += "<input type='submit' value='Hide extra checksums' />"
             html += "</form>"
 
             html += f"""<form method="POST" action="{url_for('delete_files', id=id)}">"""
@@ -182,7 +182,7 @@ def fileset():
             all_columns = list(result[0].keys()) if result else []
             temp_set = set()
 
-            if widetable == 'true':
+            if widetable == 'full':
                 file_ids = [file['id'] for file in result]
                 cursor.execute(f"SELECT file, checksum, checksize, checktype FROM filechecksum WHERE file IN ({','.join(map(str, file_ids))})")
                 checksums = cursor.fetchall()
