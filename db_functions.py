@@ -224,15 +224,25 @@ def get_all_related_filesets(fileset_id, conn, visited=None):
     visited.add(fileset_id)
 
     related_filesets = [fileset_id]
-    with conn.cursor() as cursor:
-        cursor.execute(f"SELECT fileset, oldfileset FROM history WHERE fileset = {fileset_id} OR oldfileset = {fileset_id}")
-        history_records = cursor.fetchall()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT fileset, oldfileset FROM history WHERE fileset = {fileset_id} OR oldfileset = {fileset_id}")
+            history_records = cursor.fetchall()
 
-    for record in history_records:
-        if record['fileset'] not in visited:
-            related_filesets.extend(get_all_related_filesets(record['fileset'], conn, visited))
-        if record['oldfileset'] not in visited:
-            related_filesets.extend(get_all_related_filesets(record['oldfileset'], conn, visited))
+        for record in history_records:
+            if record['fileset'] not in visited:
+                related_filesets.extend(get_all_related_filesets(record['fileset'], conn, visited))
+            if record['oldfileset'] not in visited:
+                related_filesets.extend(get_all_related_filesets(record['oldfileset'], conn, visited))
+    except pymysql.err.InterfaceError:
+            print("Connection lost, reconnecting...")
+            try:
+                conn = db_connect()  # Reconnect if the connection is lost
+            except Exception as e:
+                print(f"Failed to reconnect: {e}")
+                
+    except Exception as e:
+        print(f"Error fetching related filesets: {e}")
 
     return related_filesets
 
