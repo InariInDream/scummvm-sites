@@ -168,6 +168,16 @@ try:
 except:
     # if aleady exists, change the length of the column
     cursor.execute("ALTER TABLE fileset MODIFY COLUMN `user_count` INT;")
+    
+try:
+    cursor.execute("ALTER TABLE file ADD COLUMN punycode_name VARCHAR(200);")
+except:
+    cursor.execute("ALTER TABLE file MODIFY COLUMN punycode_name VARCHAR(200);")
+    
+try:
+    cursor.execute("ALTER TABLE file ADD COLUMN encoding_type VARCHAR(20) DEFAULT 'UTF-8';")
+except:
+    cursor.execute("ALTER TABLE file MODIFY COLUMN encoding_type VARCHAR(20) DEFAULT 'UTF-8';")
 
 for index, definition in indices.items():
     try:
