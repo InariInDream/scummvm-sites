@@ -157,7 +157,10 @@ def insert_file(file, detection, src, conn):
         checktype = "None"
         detection = 0
     detection_type = f"{checktype}-{checksize}" if checktype != "None" else f"{checktype}"
-    query = f"INSERT INTO file (name, size, checksum, fileset, detection, detection_type, `timestamp`) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection}, '{detection_type}', NOW())"
+    if punycode_need_encode(escape_string(file['name'])):
+        query = f"INSERT INTO file (name, size, checksum, fileset, detection, detection_type, `timestamp`) VALUES ('{encode_punycode(escape_string(file['name']))}', '{file['size']}', '{checksum}', @fileset_last, {detection}, '{detection_type}', NOW())"
+    else:
+        query = f"INSERT INTO file (name, size, checksum, fileset, detection, detection_type, `timestamp`) VALUES ('{escape_string(file['name'])}', '{file['size']}', '{checksum}', @fileset_last, {detection}, '{detection_type}', NOW())"
     with conn.cursor() as cursor:
         cursor.execute(query)
 
@@ -182,7 +185,28 @@ def delete_filesets(conn):
     query = "DELETE FROM fileset WHERE `delete` = TRUE"
     with conn.cursor() as cursor:
         cursor.execute(query)
+        
+def encode_punycode(src):
+    pass
 
+def punycode_need_encode(src):
+    if not src:
+        return False
+
+    SPECIAL_SYMBOLS = "/\":*|\\?%<>\x7f"
+
+    for char in src:
+        if ord(char) >= 0x80:
+            return True
+        if ord(char) < 0x20:
+            return True
+        if char in SPECIAL_SYMBOLS:
+            return True
+
+    if src[-1] == ' ' or src[-1] == '.':
+        return True
+
+    return False
 
 def create_log(category, user, text, conn):
     query = f"INSERT INTO log (`timestamp`, category, user, `text`) VALUES (FROM_UNIXTIME({int(time.time())}), '{escape_string(category)}', '{escape_string(user)}', '{escape_string(text)}')"
